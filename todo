@@ -1,0 +1,94 @@
+1. fix bugs (most pressing one is somewhere in PrismaticJoint)
+2. speed up
+3. figure out a new name
+4. done
+
+============testbed==============
+box_cutter                 buggy
+breakable                  buggy / impulses too low?
+collision_filtering        done -- prismatic bug screwing this up
+distance                   done, but buggy in cases...
+one_sided_platform         done, untested
+theo_jansen                done, ok but slow
+tiles                      done, ok but incredibly slow -- expected
+apply_force                done
+body_types                 done
+bridge                     done
+bullet                     done
+cantilever                 done
+car                        done
+chain                      done
+character_collision        done
+collision_processing       done
+confined                   done
+edge_shapes                done
+edge_test                  done
+framework                  done
+gish_tribute               done
+pinball                    done
+pulley                     done
+pyramid                    done
+raycast                    done
+restitution                done
+ropes                      done
+test_empty                 done
+time_of_impact             done
+vertical_stack             done
+web                        done
+
+
+======== dynamics/joints =========
+b2PrismaticJoint            done, big bug with limits
+b2GearJoint                 done, doesn't work (likely because of prismatic)
+b2MouseJoint                done
+b2PulleyJoint               done
+b2WheelJoint                done
+b2RopeJoint                 done
+b2WeldJoint                 done
+b2RevoluteJoint             done
+b2DistanceJoint             done
+b2FrictionJoint             done
+b2Joint                     done
+
+========== collision =============
+b2Distance                 done
+b2TimeOfImpact             done
+b2Collision                done
+b2BroadPhase               done
+b2DynamicTree              done
+Shapes\b2EdgeShape         done
+Shapes\b2LoopShape         done
+Shapes\b2CircleShape       done
+Shapes\b2PolygonShape      done
+Shapes\b2Shape             done
+
+===== dynamics/contacts =========
+b2ContactSolver             done
+b2Contact                   done
+b2CircleContact             done
+b2EdgeAndCircleContact      done
+b2EdgeAndPolygonContact     done
+b2LoopAndCircleContact      done
+b2LoopAndPolygonContact     done
+b2NullContact               done
+b2PolygonAndCircleContact   done
+b2PolygonContact            done
+
+============== common ==========
+b2Math                     done
+b2Settings                 done
+b2StackAllocator           xx
+b2Timer                    xx
+b2BlockAllocator           xx
+b2Draw                     xx
+b2GrowableStack            xx
+
+
+===========dynamics =============
+b2Body                     done
+b2Fixture                  done
+b2ContactManager           done
+b2WorldCallbacks           done
+b2World                    done
+b2Island                   done
+b2TimeStep                 done

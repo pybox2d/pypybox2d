@@ -1,9 +1,5 @@
-This software is covered under the zlib license.
-
 C++ version Copyright (c) 2006-2011 Erin Catto http://www.box2d.org
-Python version Copyright (c) 2008-2011 Ken Lauer / sirkne at gmail dot com
-
-Implemented using the pybox2d SWIG interface for Box2D (pybox2d.googlecode.com)
+Python port by Ken Lauer / http://pybox2d.googlecode.com
 
 This software is provided 'as-is', without any express or implied
 warranty.  In no event will the authors be held liable for any damages
@@ -18,4 +14,3 @@ appreciated but is not required.
 2. Altered source versions must be plainly marked as such, and must not be
 misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
-
