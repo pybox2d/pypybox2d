@@ -18,6 +18,10 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from framework import *
 
 def create_bridge(world, ground, size, offset, plank_count, friction=0.6, density=1.0):

@@ -18,8 +18,12 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
+from .common import *
 
 class FixtureProxy(object):
     __slots__=['aabb', 'fixture', 'child_index', 'proxy_ref', '__weakref__']

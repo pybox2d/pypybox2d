@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from copy import copy
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 import weakref
-from settings import (AABB_EXTENSION, AABB_MULTIPLIER, MAX_FLOAT)
+from copy import copy
+from .common import *
+from .settings import (AABB_EXTENSION, AABB_MULTIPLIER, MAX_FLOAT)
 
 class TreeNode(object):
     """A node in the dynamic tree. The client does not interact with this directly."""

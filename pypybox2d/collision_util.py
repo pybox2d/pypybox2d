@@ -18,9 +18,11 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from contact_util import ManifoldPoint, ClipVertex
+__version__ = "$Revision$"
+
 from copy import copy
+from .common import *
+from .contact_util import ManifoldPoint, ClipVertex
 
 def edge_separation(poly1, xf1, edge1, poly2, xf2):
     """Find the separation between poly1 and poly2 for a give edge normal on poly1."""

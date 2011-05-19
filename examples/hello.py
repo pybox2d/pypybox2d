@@ -10,7 +10,7 @@ There is no graphical output for this simple example, only text.
 """
 
 import sys
-sys.path.append('..')
+sys.path.extend(['..', '.'])
 
 import pypybox2d as b2
 from pypybox2d.common import *

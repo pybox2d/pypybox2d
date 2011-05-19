@@ -18,11 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-import contact
-from common import *
-from collision_util import *
-from contact_util import Manifold
-from settings import (MAX_FLOAT, EPSILON, MAX_MANIFOLD_POINTS, POLYGON_RADIUS, ANGULAR_SLOP)
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
+from .common import *
+from .collision_util import *
+from .contact_util import Manifold
+from .settings import (MAX_FLOAT, EPSILON, MAX_MANIFOLD_POINTS, POLYGON_RADIUS, ANGULAR_SLOP)
 
 # -- defines --
 RELATIVE_TOL = 0.98

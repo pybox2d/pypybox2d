@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from fixture import Fixture
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
-import shapes
+from .common import *
+from .fixture import Fixture
+from . import shapes
 
 class Body(object):
     """A rigid body."""

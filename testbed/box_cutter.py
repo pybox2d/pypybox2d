@@ -18,6 +18,11 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
+
 # Original C++ version by Daid 
 #  http://www.box2d.org/forum/viewtopic.php?f=3&t=1473
 # - Written for pybox2d 2.1 by Ken

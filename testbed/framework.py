@@ -19,18 +19,20 @@
 # 3. This notice may not be removed or altered from any source distribution.
 
 """
-A simple, minimal Pygame-based backend.
-It will only draw and support very basic keyboard input (ESC to quit). 
+A simple, minimal Pygame-based backend for pypybox2d.
 
-NOTE: Examples with Step() re-implemented are not yet supported, as I wanted
-to do away with the Settings class. This means the following will definitely
-not work: Breakable, Liquid, Raycast, TimeOfImpact, ... (incomplete)
+It will only draw and support very basic keyboard input (ESC to quit). 
+There is also basic mouse joint support.
 """
+
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
 
 import pygame
 from pygame.locals import *
 import sys
-sys.path.append('..')
+sys.path.extend(['..', '.'])
 
 import pypybox2d as b2
 from pypybox2d.common import *

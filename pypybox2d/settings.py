@@ -18,7 +18,12 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 # Global tuning constants based on meters-kilograms-seconds (MKS) units.
+
 import sys
 import math
 
@@ -30,6 +35,7 @@ MAX_FLOAT = sys.float_info.max
 del math
 del sys
 
+# Global tuning constants based on meters-kilograms-seconds (MKS) units.
 # Collision
 # The maximum number of contact points between two convex shapes.
 MAX_MANIFOLD_POINTS = 2

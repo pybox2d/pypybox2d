@@ -18,10 +18,22 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from world import World
-from fixture import Fixture
-from body import Body
-from shapes import (Circle, Polygon, Edge, Loop)
-from joints import (DistanceJoint, RevoluteJoint, FrictionJoint, PrismaticJoint,
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
+from . import world
+from . import fixture
+from . import body
+from . import shapes
+from . import joints
+from . import dynamictree
+
+from .common import *
+from .world import World
+from .fixture import Fixture
+from .body import Body
+from .shapes import (Circle, Polygon, Edge, Loop)
+from .joints import (DistanceJoint, RevoluteJoint, FrictionJoint, PrismaticJoint,
                     WeldJoint, RopeJoint, WheelJoint, MouseJoint, PulleyJoint, GearJoint)
+

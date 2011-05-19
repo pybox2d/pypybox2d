@@ -1,9 +1,13 @@
-import shapes
-from common import *
-from contact_util import *
-import collision
-import distance
-import settings
+from . import shapes
+from . import distance
+from . import settings
+from . import collision
+from .common import *
+from .contact_util import *
+
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
 
 EPSILON = settings.EPSILON
 EPSILON_SQR = settings.EPSILON_SQR

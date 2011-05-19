@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 import math
-from common import *
 from copy import copy
-from settings import (MAX_MANIFOLD_POINTS, EPSILON_SQR)
+from .common import *
+from .settings import (MAX_MANIFOLD_POINTS, EPSILON_SQR)
 
 def mix_friction(friction1, friction2):
     """

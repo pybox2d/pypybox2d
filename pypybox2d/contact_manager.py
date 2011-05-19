@@ -18,11 +18,15 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from broadphase import BroadPhase
-from contact import (Contact, ContactSolver)
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
-import settings
+from .common import *
+from .broadphase import BroadPhase
+from .contact import (Contact, ContactSolver)
+from . import settings
 
 MAX_TRANSLATION = settings.MAX_TRANSLATION
 MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR

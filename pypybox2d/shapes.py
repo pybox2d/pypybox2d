@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from copy import copy
-from settings import (EPSILON, EPSILON_SQR, POLYGON_RADIUS)
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 import numbers
+from copy import copy
+from .common import *
+from .settings import (EPSILON, EPSILON_SQR, POLYGON_RADIUS)
 
 class MassData(object):
     """

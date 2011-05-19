@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from common import *
-from shapes import (Circle, Polygon, Edge, Loop, Shape)
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
-from settings import (DISTANCE_MAX_ITERS, EPSILON_SQR, EPSILON)
+from .common import *
+from .shapes import (Circle, Polygon, Edge, Loop, Shape)
+from .settings import (DISTANCE_MAX_ITERS, EPSILON_SQR, EPSILON)
 
 gjk_calls = 0
 gjk_max_iters = 0

@@ -18,17 +18,20 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from __future__ import print_function # TODO remove
-from common import *
-from body import Body
-from broadphase import BroadPhase
-from contact import (Contact, ContactSolver)
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
-from contact_manager import (Island, ContactManager)
-import joints
-import settings
-import distance
-import toi
+from .common import *
+from .body import Body
+from .broadphase import BroadPhase
+from .contact import (Contact, ContactSolver)
+from .contact_manager import (Island, ContactManager)
+from . import joints
+from . import settings
+from . import distance
+from . import toi
 
 MAX_TRANSLATION = settings.MAX_TRANSLATION
 MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR

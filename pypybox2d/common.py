@@ -20,8 +20,7 @@
 
 import math
 import numbers
-import settings
-from settings import EPSILON
+from .settings import EPSILON
 
 PI = math.pi
 

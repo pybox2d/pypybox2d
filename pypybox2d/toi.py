@@ -18,9 +18,13 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-from distance import *
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
+
 from copy import copy
-from settings import (LINEAR_SLOP, TOI_MAX_ITERS) #, MAX_POLYGON_VERTICES
+from .distance import *
+from .settings import (LINEAR_SLOP, TOI_MAX_ITERS) #, MAX_POLYGON_VERTICES
 toi_calls = 0
 toi_max_root_iters = 0
 toi_root_iters = 0
