@@ -24,16 +24,11 @@ from math import sqrt
 
 class Gear (Framework):
     name="Gear"
-    description="Keys: left = a, brake = s, right = d, hz down = q, hz up = e"
-    hz=4
-    zeta=0.7
-    speed=50
-    bridgePlanks=20
+    description=""
     def __init__(self):
         super(Gear, self).__init__()
 
-        # The ground -- create some terrain
-        ground=self.world.create_static_body(shapes=b2.Edge((50,0),(-50,0)))
+        ground=self.world.create_static_body(shapes=b2.Edge((50, 0),(-50, 0)))
         
         circle1 = b2.Circle(1.0)
         circle2 = b2.Circle(2.0)
@@ -41,11 +36,8 @@ class Gear (Framework):
         
         body1 = self.world.create_dynamic_body(
                     position = (-3.0, 12.0),
-                    fixtures = b2.Fixture(
-                                circle1,
-                                density=5.0
-                                ),
-                            )
+                    fixtures = b2.Fixture(circle1, density=5.0),
+                )
         
         joint1 = self.world.create_revolute_joint(
                     ground, body1,
@@ -53,11 +45,8 @@ class Gear (Framework):
         
         body2 = self.world.create_dynamic_body(
                     position = (0.0, 12.0),
-                    fixtures = b2.Fixture(
-                                circle2,
-                                density=5.0
-                                ),
-                            )
+                    fixtures = b2.Fixture(circle2, density=5.0),
+                )
 
         joint2 = self.world.create_revolute_joint(
                     ground, body2,
@@ -65,11 +54,8 @@ class Gear (Framework):
 
         body3 = self.world.create_dynamic_body(
                     position = (2.5, 12.0),
-                    fixtures = b2.Fixture(
-                                circle2,
-                                density=5.0
-                                ),
-                            )
+                    fixtures = b2.Fixture(box, density=5.0),
+                )
        
         joint3 = self.world.create_prismatic_joint(
                     ground, body3, 

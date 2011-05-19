@@ -1,16 +1,17 @@
-1. fix bugs (most pressing one is somewhere in PrismaticJoint)
+1. fix bugs
 2. speed up
 3. figure out a new name
 4. done
 
 ============testbed==============
-box_cutter                 buggy
+box_cutter                 buggy / not due to cutting, but due to shape destruction/creation, i think
 breakable                  buggy / impulses too low?
-collision_filtering        done -- prismatic bug screwing this up
-distance                   done, but buggy in cases...
-one_sided_platform         done, untested
-theo_jansen                done, ok but slow
 tiles                      done, ok but incredibly slow -- expected
+distance                   done
+gears                      done
+collision_filtering        done
+one_sided_platform         done
+theo_jansen                done
 apply_force                done
 body_types                 done
 bridge                     done
@@ -38,8 +39,8 @@ web                        done
 
 
 ======== dynamics/joints =========
-b2PrismaticJoint            done, big bug with limits
-b2GearJoint                 done, doesn't work (likely because of prismatic)
+b2GearJoint                 done, needs additional testing, but seems to work
+b2PrismaticJoint            done
 b2MouseJoint                done
 b2PulleyJoint               done
 b2WheelJoint                done

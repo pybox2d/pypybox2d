@@ -45,26 +45,30 @@ class SeparationFunction(object):
 
         xf_a = self.sweep_a.get_transform(t1)
         xf_b = self.sweep_b.get_transform(t1)
+
+        index_a0, index_b0 = cache.indices[0]
         if count == 1:
             self.type = SeparationFunction.POINTS
             self.find_min_separation = self.find_min_separation_points
             self.evaluate = self.evaluate_points
 
-            local_point_a = self.proxy_a._vertices[cache.index_a[0]]
-            local_point_b = self.proxy_b._vertices[cache.index_b[0]]
+            local_point_a = self.proxy_a._vertices[index_a0]
+            local_point_b = self.proxy_b._vertices[index_b0]
             point_a = xf_a * local_point_a
             point_b = xf_b * local_point_b
             self.axis = point_b - point_a
             s = self.axis.normalize()
             return s
-        elif cache.index_a[0] == cache.index_a[1]:
+
+        index_a1, index_b1 = cache.indices[1]
+        if index_a0 == index_a1:
             # Two points on B and one on A.
             self.type = SeparationFunction.FACE_B
             self.find_min_separation = self.find_min_separation_face_b
             self.evaluate = self.evaluate_face_b
 
-            local_point_b1 = proxy_b._vertices[cache.index_b[0]]
-            local_point_b2 = proxy_b._vertices[cache.index_b[1]]
+            local_point_b1 = proxy_b._vertices[index_b0]
+            local_point_b2 = proxy_b._vertices[index_b1]
 
             self.axis = (local_point_b2 - local_point_b1).cross(1.0)
             self.axis.normalize()
@@ -73,7 +77,7 @@ class SeparationFunction(object):
             self.local_point = 0.5 * (local_point_b1 + local_point_b2)
             point_b = xf_b * self.local_point
 
-            local_point_a = proxy_a._vertices[cache.index_a[0]]
+            local_point_a = proxy_a._vertices[index_a0]
             point_a = xf_a * local_point_a
 
             s = (point_a - point_b).dot(normal)
@@ -87,8 +91,8 @@ class SeparationFunction(object):
             self.find_min_separation = self.find_min_separation_face_a
             self.evaluate = self.evaluate_face_a
 
-            local_point_a1 = self.proxy_a._vertices[cache.index_a[0]]
-            local_point_a2 = self.proxy_a._vertices[cache.index_a[1]]
+            local_point_a1 = self.proxy_a._vertices[index_a0]
+            local_point_a2 = self.proxy_a._vertices[index_a1]
             
             self.axis = (local_point_a2 - local_point_a1).cross(1.0)
             self.axis.normalize()
@@ -97,7 +101,7 @@ class SeparationFunction(object):
             self.local_point = 0.5 * (local_point_a1 + local_point_a2)
             point_a = xf_a * self.local_point
 
-            local_point_b = self.proxy_b._vertices[cache.index_b[0]]
+            local_point_b = self.proxy_b._vertices[index_b0]
             point_b = xf_b * local_point_b
 
             s = (point_b - point_a).dot(normal)

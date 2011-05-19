@@ -28,12 +28,15 @@ gjk_max_iters = 0
 gjk_iters = 0
 
 class SimplexCache(object):
-    __slots__ = ['metric', 'count', 'index_a', 'index_b']
+    __slots__ = ['metric', 'count', 'indices']
     def __init__(self):
         self.count = 0
         self.metric = 0.0       # length or area
-        self.index_a = [0,0,0]  # vertices on shape a
-        self.index_b = [0,0,0]  # vertices on shape b
+        self.indices = [(0, 0), (0, 0), (0, 0)]  # vertices on (shape a, shape b)
+
+    def __repr__(self):
+        return 'SimplexCache(metric=%g, count=%d, indices=%s)' \
+                % (self.metric, self.count, self.indices)
 
 class SimplexVertex(object):
     """
@@ -45,8 +48,20 @@ class SimplexVertex(object):
     indexB = wB index
     """
     __slots__ = ['wa', 'wb', 'w', 'a', 'index_a', 'index_b']
-    def __init__(self):
-        pass
+    def __init__(self, wa=(0,0), wb=(0,0), w=(0,0), a=0.0, index_a=0, index_b=0):
+        self.wa = Vec2(*wa)
+        self.wb = Vec2(*wb)
+        self.w = Vec2(*w)
+        self.a = a
+        self.index_a = index_a
+        self.index_b = index_b
+
+    def __repr__(self):
+        return 'SimplexVertex(wa=%s, wb=%s, w=%s, a=%s, index_a=%d, index_b=%d)' \
+                % (self.wa, self.wb, self.w, self.a, self.index_a, self.index_b)
+
+    def __copy__(self):
+        return SimplexVertex(self.wa, self.wb, self.w, self.a, self.index_a, self.index_b)
 
 class Simplex(object):
     __slots__ = ['_v1', '_v2', '_v3', '_count']
@@ -60,6 +75,10 @@ class Simplex(object):
     def vertices(self):
         return [self._v1, self._v2, self._v3]
 
+    @property
+    def used_vertices(self):
+        return self.vertices[:self._count]
+
     def read_cache(self, cache, proxy_a, transform_a, proxy_b, transform_b):
         assert(cache.count <= 3)
         
@@ -67,9 +86,8 @@ class Simplex(object):
         self._count = cache.count
         vertices = self.vertices
 
-        for i, v in enumerate(vertices[:self._count]):
-            v.index_a = cache.index_a[i]
-            v.index_b = cache.index_b[i]
+        for i, v in enumerate(self.used_vertices):
+            v.index_a, v.index_b = cache.indices[i]
             w_a_local = proxy_a._vertices[v.index_a]
             w_b_local = proxy_b._vertices[v.index_b]
             v.wa = transform_a * w_a_local
@@ -103,8 +121,7 @@ class Simplex(object):
         cache.count = self._count
         vertices = self.vertices[:self._count]
         for i, vertex in enumerate(vertices):
-            cache.index_a[i] = vertex.index_a
-            cache.index_b[i] = vertex.index_b
+            cache.indices[i] = (vertex.index_a, vertex.index_b)
 
     @property
     def closest_point(self):
@@ -212,7 +229,7 @@ class Simplex(object):
             # a1 <= 0, so we clamp it to 0
             self._v2.a = 1.0
             self._count = 1
-            self._v1 = self._v2
+            self._v1 = copy(self._v2)
             return
 
         # Must be in e12 region.
@@ -290,21 +307,21 @@ class Simplex(object):
             self._v1.a = d13_1 * inv_d13
             self._v3.a = d13_2 * inv_d13
             self._count = 2
-            self._v2 = self._v3
+            self._v2 = copy(self._v3)
             return
 
         # w2 region
         if d12_1 <= 0.0 and d23_2 <= 0.0:
             self._v2.a = 1.0
             self._count = 1
-            self._v1 = self._v2
+            self._v1 = copy(self._v2)
             return
 
         # w3 region
         if d13_1 <= 0.0 and d23_1 <= 0.0:
             self._v3.a = 1.0
             self._count = 1
-            self._v1 = self._v3
+            self._v1 = copy(self._v3)
             return
 
         # e23
@@ -313,7 +330,7 @@ class Simplex(object):
             self._v2.a = d23_1 * inv_d23
             self._v3.a = d23_2 * inv_d23
             self._count = 2
-            self._v1 = self._v3
+            self._v1 = copy(self._v3)
             return
 
         # Must be in triangle123
@@ -447,9 +464,7 @@ def shape_distance(proxy_a, proxy_b, transform_a, transform_b, use_radii, cache=
     iter_ = 0
     while iter_ < DISTANCE_MAX_ITERS:
         # Copy simplex so we can identify duplicates.
-        save_count = simplex._count
-        save_a = [v.index_a for v in simplex.vertices[:save_count]]
-        save_b = [v.index_b for v in simplex.vertices[:save_count]]
+        save_list = [(v.index_a, v.index_b) for v in simplex.used_vertices]
 
         if simplex._count == 1:
             pass
@@ -500,14 +515,8 @@ def shape_distance(proxy_a, proxy_b, transform_a, transform_b, use_radii, cache=
         gjk_iters += 1
 
         # Check for duplicate support points. This is the main termination criteria.
-        duplicate = False
-        for i in range(save_count):
-            if vertex.index_a == save_a[i] and vertex.index_b == save_b[i]:
-                duplicate = True
-                break
-
-        # If we found a duplicate support point we must exit to avoid cycling.
-        if duplicate:
+        if (vertex.index_a, vertex.index_b) in save_list:
+            # If we found a duplicate support point we must exit to avoid cycling.
             break
 
         # New vertex is ok and needed.
@@ -528,7 +537,7 @@ def shape_distance(proxy_a, proxy_b, transform_a, transform_b, use_radii, cache=
         r_b = proxy_b._radius
 
         if distance_ > (r_a + r_b) and distance_ > EPSILON:
-            # Shapes are still no overlapped.
+            # Shapes are still not overlapped.
             # Move the witness points to the outer surface.
             distance_ -= r_a + r_b
             normal = point_b - point_a

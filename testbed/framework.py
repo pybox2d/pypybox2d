@@ -75,8 +75,11 @@ b2.Polygon.draw = draw_polygon
 
 def draw_circle(circle, screen, body, fixture):
     transform = body.transform
-    position = to_screen([transform*circle.position])[0]
-    pygame.draw.circle(screen, colors[body.type], position, int(circle.radius*PPM))
+    radius = circle.radius * PPM
+    axis = transform.rotation.col1
+    c = to_screen([transform*circle.position])[0]
+    pygame.draw.circle(screen, colors[body.type], c, int(radius))
+    pygame.draw.aaline(screen, (255,255,255), c, (int(c[0] - radius*axis[0]), int(c[1] + radius*axis[1])))
 b2.Circle.draw = draw_circle
 
 def draw_edge(edge, screen, body, fixture):
@@ -136,7 +139,7 @@ class Framework(object):
         print('Initializing pygame framework...')
         # Pygame Initialization
         pygame.init()
-        caption= "Python Box2D Testbed - Simple backend - " + self.name
+        caption= "Pure Python Box2D Testbed - " + self.name
         pygame.display.set_caption(caption)
 
         # Screen and debug draw

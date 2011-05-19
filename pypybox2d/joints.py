@@ -438,12 +438,12 @@ class RevoluteJoint(Joint):
     @property
     def joint_angle(self):
         """The current joint angle in radians."""
-        return self._body_b._sweep.a - self._body_b._sweep.a - self._reference_angle
+        return self._body_b._sweep.a - self._body_a._sweep.a - self._reference_angle
 
     @property
     def joint_speed(self):
         """The current joint speed in radians/sec."""
-        return self._body_b._angular_velocity - self._body_b._angular_velocity
+        return self._body_b._angular_velocity - self._body_a._angular_velocity
 
     @property
     def motor_speed(self):
@@ -956,7 +956,7 @@ class FrictionJoint(Joint):
         Cdot = v_b + scalar_cross(w_b, rb) - v_a - scalar_cross(w_a, ra)
 
         impulse = -(self._linear_mass * Cdot)
-        old_impulse = self._linear_impulse
+        old_impulse = Vec2(*self._linear_impulse)
         self._linear_impulse += impulse
 
         max_impulse = step.dt * self._max_force
@@ -1016,7 +1016,7 @@ class PrismaticJoint(Joint):
             self._local_anchor_b = body_b.get_local_point(anchor)
 
         if reference_angle is not None:
-            self._reference_angle = reference_angle
+            self._reference_angle = float(reference_angle)
         else:
             self._reference_angle = body_b.angle - body_a.angle
 
@@ -1062,6 +1062,10 @@ class PrismaticJoint(Joint):
         return inv_dt * self._impulse.y
 
     @property
+    def axis(self):
+        return self._body_a.get_world_vector(self._local_x_axis);
+
+    @property
     def anchor_a(self):
         """The world anchor point relative to body_a's origin."""
         return self._body_a.get_world_point(self._local_anchor_a)
@@ -1075,8 +1079,7 @@ class PrismaticJoint(Joint):
     def joint_translation(self):
         """The current joint translation, usually in meters."""
         d = self.anchor_b - self.anchor_a
-        axis = self._body_a.get_world_vector(self._local_x_axis);
-        return d.dot(axis)
+        return d.dot(self.axis)
 
     @property
     def joint_speed(self):
@@ -1193,34 +1196,34 @@ class PrismaticJoint(Joint):
 
         # Compute motor Jacobian and effective mass.
         self._axis = xf1._rotation * self._local_x_axis
-        self._a1 = (d + r1).cross(self._axis)
-        self._a2 = r2.cross(self._axis)
+        a1 = self._a1 = (d + r1).cross(self._axis)
+        a2 = self._a2 = r2.cross(self._axis)
 
-        self._motor_mass = self._inv_mass_a + self._inv_mass_b + i1 * self._a1**2 + i2 * self._a2**2
+        self._motor_mass = m1 + m2 + i1 * self._a1**2 + i2 * self._a2**2
         if self._motor_mass > 0.0:
             self._motor_mass = 1.0 / self._motor_mass
 
         # Prismatic constraint.
         self._perp = xf1._rotation * self._local_y_axis
 
-        self._s1 = (d + r1).cross(self._perp)
-        self._s2 = r2.cross(self._perp)
+        s1 = self._s1 = (d + r1).cross(self._perp)
+        s2 = self._s2 = r2.cross(self._perp)
 
-        k11 = m1 + m2 + i1 * self._s1 ** 2 + i2 * self._s2 ** 2
-        k12 = i1 * self._s1 + i2 * self._s2
-        k13 = i1 * self._s1 * self._a1 + i2 * self._s2 * self._a2
+        k11 = m1 + m2 + i1 * (s1 ** 2) + i2 * (s2 ** 2)
+        k12 = i1 * s1 + i2 * s2
+        k13 = i1 * s1 * a1 + i2 * s2 * a2
         k22 = i1 + i2
         if k22 == 0.0:
             k22 = 1.0
-        k23 = i1 * self._a1 + i2 * self._a2
-        k33 = m1 + m2 + i1 * self._a1 ** 2 + i2 * self._a2 ** 2
+        k23 = i1 * a1 + i2 * a2
+        k33 = m1 + m2 + i1 * (a1 ** 2) + i2 * (a2 ** 2)
 
         self._k = Mat33((k11, k12, k13), (k12, k22, k23), (k13, k23, k33))
 
         # Compute motor and limit terms.
         if self._limit_enabled:
             joint_translation = self._axis.dot(d)
-            if abs(self._upper_limit - self._lower_limit) < 2.0 * LINEAR_SLOP:
+            if abs(self._upper_limit - self._lower_limit) < (2.0 * LINEAR_SLOP):
                 self._limit_state = EQUAL_LIMITS
             elif joint_translation <= self._lower_limit:
                 if self._limit_state != AT_LOWER_LIMIT:
@@ -1245,14 +1248,17 @@ class PrismaticJoint(Joint):
             self._impulse *= step.dt_ratio
             self._motor_impulse *= step.dt_ratio
 
-            P = self._impulse.x * self._perp + (self._motor_impulse + self._impulse.z) * self._axis
-            L1 = self._impulse.x * self._s1 + self._impulse.y + (self._motor_impulse + self._impulse.z) * self._a1
-            L2 = self._impulse.x * self._s2 + self._impulse.y + (self._motor_impulse + self._impulse.z) * self._a2
+            ix, iy, iz = self._impulse
+            mi = self._motor_impulse
 
-            ba._linear_velocity -= self._inv_mass_a * P
+            P = ix * self._perp + (mi + iz) * self._axis
+            L1 = ix * s1 + iy + (mi + iz) * a1
+            L2 = ix * s2 + iy + (mi + iz) * a2
+
+            ba._linear_velocity -= m1 * P
             ba._angular_velocity -= i1 * L1
 
-            bb._linear_velocity += self._inv_mass_b * P
+            bb._linear_velocity += m2 * P
             bb._angular_velocity += i2 * L2
         else:
             self._impulse.zero()
@@ -1263,10 +1269,10 @@ class PrismaticJoint(Joint):
         ba = self._body_a
         bb = self._body_b
 
-        c1 = ba._sweep.c
+        center_a = ba._sweep.c
         a1 = ba._sweep.a
 
-        c2 = bb._sweep.c
+        center_b = bb._sweep.c
         a2 = bb._sweep.a
 
         # Solve linear limit constraint.
@@ -1282,7 +1288,7 @@ class PrismaticJoint(Joint):
 
         r1 = R1 * (self._local_anchor_a - self._local_center_a)
         r2 = R2 * (self._local_anchor_b - self._local_center_b)
-        d = c2 + r2 - c1 - r1
+        d = center_b + r2 - center_a - r1
 
         if self._limit_enabled:
             self._axis = R1 * self._local_x_axis
@@ -1308,8 +1314,8 @@ class PrismaticJoint(Joint):
 
         self._perp = R1 * self._local_y_axis
 
-        self._s1 = (d + r1).cross(self._perp)
-        self._s2 = (r2).cross(self._perp)
+        s1 = self._s1 = (d + r1).cross(self._perp)
+        s2 = self._s2 = (r2).cross(self._perp)
 
         C1 = Vec2(self._perp.dot(d), a2 - a1 - self._reference_angle)
 
@@ -1322,22 +1328,22 @@ class PrismaticJoint(Joint):
         i2 = self._inv_Ib
 
         if active:
-            k11 = m1 + m2 + i1 * self._s1 * self._s1 + i2 * self._s2 * self._s2
-            k12 = i1 * self._s1 + i2 * self._s2
-            k13 = i1 * self._s1 * self._a1 + i2 * self._s2 * self._a2
+            k11 = m1 + m2 + i1 * (s1 ** 2) + i2 * (s2 ** 2)
+            k12 = i1 * s1 + i2 * s2
+            k13 = i1 * s1 * self._a1 + i2 * s2 * self._a2
             k22 = i1 + i2
             if k22 == 0.0:
                 k22 = 1.0
             k23 = i1 * self._a1 + i2 * self._a2
-            k33 = m1 + m2 + i1 * self._a1 * self._a1 + i2 * self._a2 * self._a2
+            k33 = m1 + m2 + i1 * (self._a1 ** 2) + i2 * (self._a2 ** 2)
 
             self._k = Mat33((k11, k12, k13), (k12, k22, k23), (k13, k23, k33))
             C = Vec3(C1.x, C1.y, C2)
 
             impulse = self._k.solve3x3(-C)
         else:
-            k11 = m1 + m2 + i1 * self._s1 * self._s1 + i2 * self._s2 * self._s2
-            k12 = i1 * self._s1 + i2 * self._s2
+            k11 = m1 + m2 + i1 * s1 * s1 + i2 * s2 * s2
+            k12 = i1 * s1 + i2 * s2
             k22 = i1 + i2
             if k22 == 0.0:
                 k22 = 1.0
@@ -1346,16 +1352,17 @@ class PrismaticJoint(Joint):
             self._k.col2 = Vec3(k12, k22, 0.0)
 
             impulse1 = self._k.solve2x2(-C1)
-            impulse = Vec3(impulse1.x, impulse1.y, 0.0)
+            impulse = (impulse1.x, impulse1.y, 0.0)
 
-        P = impulse.x * self._perp + impulse.z * self._axis
-        L1 = impulse.x * self._s1 + impulse.y + impulse.z * self._a1
-        L2 = impulse.x * self._s2 + impulse.y + impulse.z * self._a2
+        ix, iy, iz = impulse
+        P = ix * self._perp + iz * self._axis
+        L1 = ix * s1 + iy + iz * self._a1
+        L2 = ix * s2 + iy + iz * self._a2
 
-        c1 -= self._inv_mass_a * P # modifies ba._sweep.c
-        c2 += self._inv_mass_b * P
-        a1 -= self._inv_Ia * L1
-        a2 += self._inv_Ib * L2
+        center_a -= self._inv_mass_a * P # modifies ba._sweep.c
+        center_b += self._inv_mass_b * P
+        a1 -= i1 * L1
+        a2 += i2 * L2
 
         ba._sweep.a = a1
         bb._sweep.a = a2
@@ -1391,14 +1398,15 @@ class PrismaticJoint(Joint):
             v2 += self._inv_mass_b * P
             w2 += self._inv_Ib * L2
 
-        Cdot1 = Vec2(self._perp.dot(v2 - v1) + self._s2 * w2 - self._s1 * w1, w2 - w1)
+        Cdot1 = Vec2(self._perp.dot(v2 - v1) + self._s2 * w2 - self._s1 * w1, 
+                     w2 - w1)
 
         if self._limit_enabled and self._limit_state != INACTIVE_LIMIT:
             # Solve prismatic and limit constraint in block form.
             Cdot2 = self._axis.dot(v2 - v1) + self._a2 * w2 - self._a1 * w1
             Cdot = Vec3(Cdot1.x, Cdot1.y, Cdot2)
 
-            f1 = self._impulse
+            old_impulse = Vec3(*self._impulse)
             df =  self._k.solve3x3(-Cdot)
             self._impulse += df
 
@@ -1407,13 +1415,13 @@ class PrismaticJoint(Joint):
             elif self._limit_state == AT_UPPER_LIMIT:
                 self._impulse.z = min(self._impulse.z, 0.0)
 
-            # f2(1:2) = invK(1:2,1:2) * (-Cdot(1:2) - K(1:2,3) * (f2(3) - f1(3))) + f1(1:2)
-            b = -Cdot1 - (self._impulse.z - f1.z) * Vec2(self._k.col3.x, self._k.col3.y)
-            f2r = self._k.solve2x2(b) + Vec2(f1.x, f1.y)
+            # f2(1:2) = invK(1:2,1:2) * (-Cdot(1:2) - K(1:2,3) * (f2(3) - old_impulse(3))) + old_impulse(1:2)
+            b = -Cdot1 - (self._impulse.z - old_impulse.z) * Vec2(self._k.col3.x, self._k.col3.y)
+            f2r = self._k.solve2x2(b) + Vec2(old_impulse.x, old_impulse.y)
             self._impulse.x = f2r.x
             self._impulse.y = f2r.y
 
-            df = self._impulse - f1
+            df = self._impulse - old_impulse
 
             P = df.x * self._perp + df.z * self._axis
             L1 = df.x * self._s1 + df.y + df.z * self._a1
@@ -2368,7 +2376,7 @@ class MouseJoint(Joint):
         Cdot = b._linear_velocity + scalar_cross(b._angular_velocity, r)
         impulse = self._mass * (-(Cdot + self._beta * self.__c + self._gamma * self._impulse))
 
-        old_impulse = self._impulse
+        old_impulse = Vec2(*self._impulse)
         self._impulse += impulse
         max_impulse = step.dt * self._max_force
         if self._impulse.length_squared > max_impulse * max_impulse:
@@ -2801,18 +2809,18 @@ class GearJoint(Joint):
             crug = r.cross(ug)
             self._j.linear_a = -ug
             self._j.angular_a = -crug
-            K += ba._inv_mass + ba._invI * crug * crug
+            K += ba._inv_mass + ba._invI * (crug ** 2)
 
         if self._revolute_b is not None:
             self._j.angular_b = -self._ratio
-            K += self._ratio * self._ratio * bb._invI
+            K += (self._ratio ** 2) * bb._invI
         else:
             ug = g2._xf._rotation * self._prismatic_b._local_x_axis
             r = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
             crug = r.cross(ug)
             self._j.linear_b = -self._ratio * ug
             self._j.angular_b = -self._ratio * crug
-            K += self._ratio * self._ratio * (bb._inv_mass + bb._invI * crug * crug)
+            K += self._ratio * self._ratio * (bb._inv_mass + bb._invI * (crug ** 2))
 
         # Compute effective mass.
         if K > 0.0:
@@ -2845,9 +2853,6 @@ class GearJoint(Joint):
         bb._angular_velocity += bb._invI * impulse * self._j.angular_b
 
     def _solve_position_constraints(self, baumgarte):
-        """This returns true if the position errors are within tolerance."""
-        linear_error = 0.0
-
         ba = self._body_a
         bb = self._body_b
 
@@ -2872,6 +2877,4 @@ class GearJoint(Joint):
 
         ba._synchronize_transform()
         bb._synchronize_transform()
-
-        # TODO_ERIN not implemented
-        return linear_error < LINEAR_SLOP
+        return True # linear_error < LINEAR_SLOP # TODO_ERIN not implemented

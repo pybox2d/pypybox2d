@@ -48,8 +48,9 @@ class Vec2(object):
     def __copy__(self):
         return Vec2(self.x, self.y)
     def __iadd__(self, other):
-        self.x+=other[0]
-        self.y+=other[1]
+        ox, oy = other
+        self.x += ox
+        self.y += oy
         return self
     def __add__(self, other):
         return Vec2(self.x+other[0], self.y+other[1])
@@ -58,24 +59,25 @@ class Vec2(object):
     def __rsub__(self, other):
         return Vec2(other[0]-self.x, other[1]-self.y)
     def __isub__(self, other):
-        self.x-=other[0]
-        self.y-=other[1]
+        ox, oy = other
+        self.x -= ox
+        self.y -= oy
         return self
     def __imul__(self, other):
         if isinstance(other, numbers.Number):
-            self.x*=other
-            self.y*=other
+            self.x *= other
+            self.y *= other
         else:
-            self.x*=other[0]
-            self.y*=other[1]
+            self.x *= other[0]
+            self.y *= other[1]
         return self
     def __itruediv__(self, other):
         if isinstance(other, numbers.Number):
-            self.x/=other
-            self.y/=other
+            self.x /= other
+            self.y /= other
         else:
-            self.x/=other[0]
-            self.y/=other[1]
+            self.x /= other[0]
+            self.y /= other[1]
         return self
     def __mul__(self, value):
         if isinstance(value, numbers.Number):
@@ -143,7 +145,7 @@ class Vec2(object):
     def __getstate__(self):
         return [self.x, self.y]
     def __setstate__(self, value):
-        self.x, self.y=value
+        self.x, self.y = value
     __idiv__=__itruediv__
     __rmul__=__mul__
     __truediv__=__div__
@@ -184,9 +186,11 @@ class Vec2(object):
             return Vec2(float(value)*self.y, -float(value)*self.x)
         else:
             # Perform the cross product on two vectors. In 2D this produces a scalar.
-            return self.x * float(value[1]) - self.y * float(value[0])
+            vx, vy = value
+            return self.x * float(vy) - self.y * float(vx)
     def dot(self, value):
-        return self.x * float(value[0]) + self.y * float(value[1])
+        vx, vy = value
+        return self.x * float(vx) + self.y * float(vy)
     def normalize(self):
         length=self.length
         if length < EPSILON:
@@ -218,40 +222,47 @@ class Vec3(object):
     def __copy__(self):
         return Vec3(self.x, self.y, self.z)
     def __iadd__(self, other):
-        self.x+=other[0]
-        self.y+=other[1]
-        self.z+=other[2]
+        vx, vy, vz = other
+        self.x += vx
+        self.y += vy
+        self.z += vz
         return self
     def __add__(self, other):
-        return Vec3(self.x+other[0], self.y+other[1], self.z+other[2])
+        vx, vy, vz = other
+        return Vec3(self.x+vx, self.y+vy, self.z+vz)
     def __sub__(self, other):
-        return Vec3(self.x-other[0], self.y-other[1], self.z-other[2])
+        vx, vy, vz = other
+        return Vec3(self.x-vx, self.y-vy, self.z-vz)
     def __isub__(self, other):
-        self.x-=other[0]
-        self.y-=other[1]
-        self.z-=other[2]
+        vx, vy, vz = other
+        self.x -= vx
+        self.y -= vy
+        self.z -= vz
         return self
     def __rsub__(self, other):
-        return Vec3(other[0]-self.x, other[1]-self.y, other[2]-self.z)
+        vx, vy, vz = other
+        return Vec3(vx-self.x, vy-self.y, vz-self.z)
     def __imul__(self, other):
         if isinstance(other, numbers.Number):
-            self.x*=other
-            self.y*=other
-            self.z*=other
+            self.x *= other
+            self.y *= other
+            self.z *= other
         else:
-            self.x*=other[0]
-            self.y*=other[1]
-            self.z*=other[2]
+            vx, vy, vz = other
+            self.x *= vx
+            self.y *= vy
+            self.z *= vz
         return self
     def __itruediv__(self, other):
         if isinstance(other, numbers.Number):
-            self.x/=other
-            self.y/=other
-            self.z/=other
+            self.x /= other
+            self.y /= other
+            self.z /= other
         else:
-            self.x/=other[0]
-            self.y/=other[1]
-            self.z/=other[2]
+            vx, vy, vz = other
+            self.x /= vx
+            self.y /= vy
+            self.z /= vz
         return self
     def __mul__(self, value):
         if isinstance(value, numbers.Number):
@@ -311,11 +322,11 @@ class Vec3(object):
             raise IndexError('Index must be in (0,1,2)')
     def __setitem__(self, i, value):
         if i==0:
-            self.x=float(value)
-        elif i==1:
-            self.y=float(value)
-        elif i==2:
-            self.z=float(value)
+            self.x = float(value)
+        elif i==1: 
+            self.y = float(value)
+        elif i==2: 
+            self.z = float(value)
         else:
             raise IndexError('Index must be in (0,1,2)')
     def __rdiv__(self, left_value):
@@ -332,10 +343,10 @@ class Vec3(object):
 
     @property
     def length(self):
-        return math.pow(self.x**2 + self.y**2 + self.z**2, 1.0/3)
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
     @property
-    def length_cubed(self):
-        return self.x**2 +self.y**2 + self.z**2
+    def length_squared(self):
+        return self.x**2 + self.y**2 + self.z**2
     @property
     def valid(self):
         return is_valid_float(self.x) and is_valid_float(self.y) and is_valid_float(self.z)
@@ -344,26 +355,28 @@ class Vec3(object):
         """
         Set the vector, copying the elements passed in.
         """
-        self.x, self.y, self.z=x, y, z
+        self.x, self.y, self.z = x, y, z
     def zero(self):
         """Zero the vector"""
-        self.x, self.y, self.z=0.0, 0.0, 0.0
+        self.x, self.y, self.z = 0.0, 0.0, 0.0
     def dot(self, value):
-        return self.x * float(value[0]) + self.y * float(value[1]) + self.z * float(value[2])
+        vx, vy, vz = value
+        return (self.x * float(vx)) + (self.y * float(vy)) + (self.z * float(vz))
     def normalize(self):
-        length=self.length
+        length = self.length
         if length < EPSILON:
             return 0.0
-        inv_length=1.0 / length
-        self.x*=inv_length
-        self.y*=inv_length
-        self.z*=inv_length
+        inv_length = 1.0 / length
+        self.x *= inv_length
+        self.y *= inv_length
+        self.z *= inv_length
         return length
     def cross(self, other):
-        return Vec3(self.y * other[2] - self.z * other[1], 
-                    self.z * other[0] - self.x * other[2],
-                    self.x * other[1] - self.y * other[0])
-
+        vx, vy, vz = other
+        sx, sy, sz = self
+        return Vec3(sy * vz - sz * vy, 
+                    sz * vx - sx * vz,
+                    sx * vy - sy * vx)
 
 class Mat22(object):
     """
@@ -386,8 +399,9 @@ class Mat22(object):
         Multiply a matrix times a vector. If a rotation matrix is provided,
         then this transforms the vector from one frame to another.
         """
-        return Vec2((self.col1.x * vec[0] + self.col2.x * vec[1]),
-                    (self.col1.y * vec[0] + self.col2.y * vec[1]))
+        v0, v1 = vec
+        return Vec2((self.col1.x * v0 + self.col2.x * v1),
+                    (self.col1.y * v0 + self.col2.y * v1))
  
     def __abs__(self):
         return Mat22(abs(self.col1), abs(self.col2))
@@ -452,8 +466,7 @@ class Mat22(object):
         """
         # TODO break this up
         if isinstance(other, (list, tuple, Vec2)):
-            other = Vec2(*other)
-            return Vec2(other.dot(self.col1), other.dot(self.col2))
+            return Vec2(self.col1.dot(other), self.col2.dot(other))
         else:
             return Mat22(
                 ((self.col1.dot(other.col1)), (self.col2.dot(other.col1))),
@@ -697,8 +710,9 @@ class Transform(object):
         
         """
         if isinstance(other, (list, tuple, Vec2)):
-            return Vec2(self._position.x + self._rotation.col1.x * other[0] + self._rotation.col2.x * other[1],
-                        self._position.y + self._rotation.col1.y * other[0] + self._rotation.col2.y * other[1])
+            o0, o1 = other
+            return Vec2(self._position.x + self._rotation.col1.x * o0 + self._rotation.col2.x * o1,
+                        self._position.y + self._rotation.col1.y * o0 + self._rotation.col2.y * o1)
         elif isinstance(other, Transform):
             raise NotImplementedError # TODO (not necessary)
         else:
@@ -973,7 +987,7 @@ def distance(p1, p2):
     return c.length
 def distance_squared(p1, p2):
     c = p1 - p2
-    return c * c
+    return c.dot(c)
 def scalar_cross(scalar, vector):
     return vector._scalar_cross(scalar)
 

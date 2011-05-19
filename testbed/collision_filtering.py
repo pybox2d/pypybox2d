@@ -156,8 +156,7 @@ class CollisionFiltering (Framework):
                     fixtures=box,
                 )
         world.create_prismatic_joint(
-            trianglebody,
-            testbody,
+            trianglebody, testbody,
             limit_enabled=True,
             local_anchor_a=(0, 4),
             local_anchor_b=(0, 0),

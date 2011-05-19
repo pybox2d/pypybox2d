@@ -55,7 +55,7 @@ class Breakable (Framework):
         
         # If the impulse is enough to split the objects, then flag it to break
         max_impulse=max(manifold_point.normal_impulse for manifold_point in contact.manifold.used_points)
-        print max_impulse,
+        print '%.1g' % max_impulse,
         if max_impulse > 40:
             print('break')
             self._break=True

@@ -19,7 +19,8 @@
 # 3. This notice may not be removed or altered from any source distribution.
 
 from framework import *
-from pypybox2d.distance import shape_distance
+import framework
+from pypybox2d.distance import (shape_distance, DISTANCE_MAX_ITERS)
 
 class Distance (Framework):
     name="Distance"
@@ -43,6 +44,11 @@ class Distance (Framework):
         # The two shapes, transformed by the respective transform[A,B]
         self.polygon_a = b2.Polygon(box=(10,0.2))
         self.polygon_b = b2.Polygon(box=(2,0.1))
+
+        # Zoom in a bit to see the shapes
+        framework.PPM = 25
+        framework.SCREEN_OFFSETX = 15
+        framework.SCREEN_OFFSETY = 10
 
     def post_step(self):
         # Calculate the distance between the two shapes with the specified transforms
@@ -73,6 +79,7 @@ class Distance (Framework):
             self.angle_b += 0.1 * PI
         elif key==Keys.K_e:
             self.angle_b -= 0.1 * PI
+
         self.transform_b.position = self.position_b
         self.transform_b.angle = self.angle_b
 
