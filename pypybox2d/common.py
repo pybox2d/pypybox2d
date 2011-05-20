@@ -21,7 +21,13 @@
 import math
 from .settings import EPSILON
 
-NUMBER_TYPES = (float, long, int)
+from sys import version_info
+if version_info >= (3,0,0):
+    NUMBER_TYPES = (float, int)
+else:
+    NUMBER_TYPES = (float, long, int)
+
+del version_info
 PI = math.pi
 
 class PhysicsError(Exception): pass
