@@ -614,7 +614,7 @@ class Loop(Shape):
          or
          Loop([(v1x, v1y), (v2x, v2y), ...])
         """
-        if len(vertices) == 2 and isinstance(vertices[0], numbers.Number):
+        if len(vertices) == 2 and isinstance(vertices[0], NUMBER_TYPES):
             vertices = [vertices]
             vertices.extend(args)
 

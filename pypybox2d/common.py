@@ -19,9 +19,9 @@
 # 3. This notice may not be removed or altered from any source distribution.
 
 import math
-import numbers
 from .settings import EPSILON
 
+NUMBER_TYPES = (float, long, int)
 PI = math.pi
 
 class PhysicsError(Exception): pass
@@ -63,7 +63,7 @@ class Vec2(object):
         self.y -= oy
         return self
     def __imul__(self, other):
-        if isinstance(other, numbers.Number):
+        if isinstance(other, NUMBER_TYPES):
             self.x *= other
             self.y *= other
         else:
@@ -71,7 +71,7 @@ class Vec2(object):
             self.y *= other[1]
         return self
     def __itruediv__(self, other):
-        if isinstance(other, numbers.Number):
+        if isinstance(other, NUMBER_TYPES):
             self.x /= other
             self.y /= other
         else:
@@ -79,17 +79,17 @@ class Vec2(object):
             self.y /= other[1]
         return self
     def __mul__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec2(value*self.x, value*self.y)
         else:
             return self.dot(value)
     def __div__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec2(self.x/value, self.y/value)
         else:
             raise ValueError('Ambiguous operation')
     def __floordiv__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec2(self.x//value, self.y//value)
         else:
             raise ValueError('Ambiguous operation')
@@ -179,7 +179,7 @@ class Vec2(object):
         return Vec2(-float(value) * self.y, float(value) * self.x)
 
     def cross(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             # Perform the cross product on a vector and a scalar. In 2D this produces
             # a vector.
             return Vec2(float(value)*self.y, -float(value)*self.x)
@@ -242,7 +242,7 @@ class Vec3(object):
         vx, vy, vz = other
         return Vec3(vx-self.x, vy-self.y, vz-self.z)
     def __imul__(self, other):
-        if isinstance(other, numbers.Number):
+        if isinstance(other, NUMBER_TYPES):
             self.x *= other
             self.y *= other
             self.z *= other
@@ -253,7 +253,7 @@ class Vec3(object):
             self.z *= vz
         return self
     def __itruediv__(self, other):
-        if isinstance(other, numbers.Number):
+        if isinstance(other, NUMBER_TYPES):
             self.x /= other
             self.y /= other
             self.z /= other
@@ -264,17 +264,17 @@ class Vec3(object):
             self.z /= vz
         return self
     def __mul__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec3(value*self.x, value*self.y, value*self.z)
         else:
             return self.dot(value)
     def __div__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec3(self.x/value, self.y/value, self.z/value)
         else:
             raise ValueError('Ambiguous operation')
     def __floordiv__(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, NUMBER_TYPES):
             return Vec3(self.x//value, self.y//value, self.z//value)
         else:
             raise ValueError('Ambiguous operation')
