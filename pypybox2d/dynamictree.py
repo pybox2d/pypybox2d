@@ -36,7 +36,7 @@ class TreeNode(object):
 
     def __init__(self):
         self.aabb=AABB()
-        self.parent=next
+        self.parent=None
         self._user_data=None
         self.child1=None
         self.child2=None
@@ -70,8 +70,8 @@ class TreeNode(object):
         """Alias for 'parent', used when in the free node pool"""
         return self.parent
     @next.setter
-    def next(self, next):
-        self.parent=next
+    def next(self, next_):
+        self.parent=next_
 
 class DynamicTree(object):
     """

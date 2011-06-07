@@ -59,7 +59,6 @@ class TimeStep(object):
         self.pos_iters=int(pos_iters)
         self.warm_starting=bool(warm_starting)
 
-
 class World(object):
     # TODO slots just for debugging
     __slots__ = ['_gravity', '_joint_destruction_listener', 

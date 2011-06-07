@@ -34,7 +34,7 @@ class BroadPhase(object):
     It is up to the client to consume the new pairs and to track subsequent overlap.
     """
     def __init__(self):
-        self._tree = DynamicTree() #do_validation=True) # TODO: turn off validation
+        self._tree = DynamicTree() #do_validation=True)
 
         self._proxy_count = 0
         self._move_buffer = []
@@ -103,9 +103,6 @@ class BroadPhase(object):
 
         # And report the pairs back to the client
         for proxy_a, proxy_b in self._pair_buffer:
-            if id(proxy_a) > id(proxy_b): # TODO remove
-                proxy_b, proxy_a = proxy_a, proxy_b
-
             if callback:
                 callback(proxy_a.user_data, proxy_b.user_data)
             else:

@@ -554,6 +554,13 @@ class PyMat22(object):
             self._col1=Vec2(*other.col1)
             self._col2=Vec2(*other.col2)
 
+    def mul_tv(self, other):
+        """
+        Transpose multiplication with vector.
+          A^T * vector (where ^T is transpose)
+        """
+        return Vec2(self._col1.dot(other), self._col2.dot(other))
+
     def mul_t(self, other):
         """
         Transpose multiplication.
@@ -563,7 +570,6 @@ class PyMat22(object):
         If the argument is a matrix, return:
           A^T * matrix
         """
-        # TODO break this up
         if isinstance(other, (list, tuple, Vec2)):
             return Vec2(self._col1.dot(other), self._col2.dot(other))
         else:

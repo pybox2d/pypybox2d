@@ -409,7 +409,6 @@ class ContactSolver(object):
             constraint.radius_b = radius_b
             constraint.type = manifold.type
 
-            assert(len(manifold.used_points) == len(constraint.points)) # TODO REMOVE
             for mp, ccp in zip(manifold.used_points, constraint.points):
                 if warm_starting:
                     ccp.normal_impulse = impulse_ratio * mp.normal_impulse
@@ -445,7 +444,7 @@ class ContactSolver(object):
 
             world_manifold = WorldManifold(manifold, body_a._xf, radius_a, body_b._xf, radius_b)
             cc.normal = copy(world_manifold.normal)
-            assert(len(cc.points) == len(world_manifold.points)) # TODO REMOVE
+
             for ccp, wmp in zip(cc.points, world_manifold.points):
                 ccp.ra = wmp - body_a._sweep.c
                 ccp.rb = wmp - body_b._sweep.c
@@ -801,7 +800,6 @@ class ContactSolver(object):
     def store_impulses(self):
         for c in self.constraints:
             m = c.manifold
-            assert(len(m.used_points) == len(c.points)) # TODO REMOVE
             for mp, ccp in zip(m.used_points, c.points):
                 mp.normal_impulse = ccp.normal_impulse
                 mp.tangent_impulse = ccp.tangent_impulse

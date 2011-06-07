@@ -65,10 +65,8 @@ class Island(object):
         
     def solve(self, step, gravity, allow_sleep):
         # Integrate velocities and apply damping.
-        for body in self.bodies:
-            if not body.dynamic:
-                continue
-
+        dynamic_bodies = [body for body in self.bodies if body.dynamic]
+        for body in dynamic_bodies:
             # Integrate velocities.
             body._linear_velocity += step.dt * (body._gravity_scale * gravity + body._inv_mass * body._force)
             body._angular_velocity += step.dt * body._invI * body._torque
@@ -113,10 +111,8 @@ class Island(object):
         contact_solver.store_impulses()
 
         # Integrate positions.
-        for b in self.bodies:
-            if b.static:
-                continue
-
+        non_static_bodies = [body for body in self.bodies if not body.static]
+        for b in non_static_bodies:
             # Check for large velocities.
             translation = step.dt * b._linear_velocity
             if translation.dot(translation) > MAX_TRANSLATION_SQR:
@@ -159,16 +155,14 @@ class Island(object):
         if allow_sleep:
             min_sleep_time = MAX_FLOAT
 
-            for b in self.bodies:
-                if body.static:
-                    continue
-
+            for b in non_static_bodies:
                 if not body._allow_sleep:
                     b._sleep_time = 0.0
                     min_sleep_time = 0.0
 
-                if not body._allow_sleep or (b._angular_velocity**2) > ANGULAR_SLEEP_TOLERANCE_SQR or \
-                        (b._linear_velocity*b._linear_velocity) > LINEAR_SLEEP_TOLERANCE_SQR:
+                if not body._allow_sleep or \
+                        (b._angular_velocity**2) > ANGULAR_SLEEP_TOLERANCE_SQR or \
+                        (b._linear_velocity.length_squared) > LINEAR_SLEEP_TOLERANCE_SQR:
                     b._sleep_time = 0.0
                     min_sleep_time = 0.0
                 else:
@@ -178,7 +172,6 @@ class Island(object):
             if min_sleep_time >= TIME_TO_SLEEP:
                 for body in self.bodies:
                     b.awake = True
-
 
     def solve_toi(self, sub_step, body_a, body_b):
         contact_solver=ContactSolver(self.contacts, sub_step.dt_ratio, sub_step.warm_starting)
@@ -236,7 +229,6 @@ class Island(object):
         if not self.post_solve:
             return
 
-        assert(len(self.contacts) == len(constraints)) # TODO REMOVE
         for contact, constraint in zip(self.contacts, constraints):
             impulses=[(point.normal_impulse, point.tangent_impulse) for point in constraint.points]
 

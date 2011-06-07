@@ -753,7 +753,6 @@ fixtures=%s)""" % info
 
     @awake.setter
     def awake(self, awake):
-        self._awake=awake
         if awake:
             if not self._awake:
                 self._sleep_time=0.0
@@ -763,6 +762,8 @@ fixtures=%s)""" % info
             self._angular_velocity = 0.0
             self._force.zero()
             self._torque = 0.0
+
+        self._awake=awake
 
     @property
     def sleeping(self):
