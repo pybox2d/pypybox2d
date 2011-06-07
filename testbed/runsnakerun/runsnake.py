@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 """The main script for the RunSnakeRun profile viewer"""
 import wx, sys, os, logging
+sys.path.append('..')
 try:
     from wx.py import editor
 except ImportError, err:
@@ -8,8 +9,15 @@ except ImportError, err:
 from gettext import gettext as _
 import pstats
 from squaremap import squaremap
-from runsnakerun import pstatsloader,pstatsadapter, meliaeloader, meliaeadapter
-from runsnakerun import listviews
+try:
+    from runsnakerun import pstatsloader,pstatsadapter, meliaeloader, meliaeadapter
+    from runsnakerun import listviews
+except:
+    import pstatsloader
+    import pstatsadapter
+    import meliaeloader
+    import meliaeadapter
+    import listviews
 
 if sys.platform == 'win32':
     windows = True
@@ -345,7 +353,7 @@ class MainFrame(wx.Frame):
 
     def LoadRSRIcon( self ):
         try:
-            from runsnakerun.resources import rsricon_png
+            from resources import rsricon_png
             return getIcon( rsricon_png.data )
         except Exception, err:
             return None

@@ -18,12 +18,15 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('Body', )
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import *
+from .common import (LockedError, Vec2, Transform, Sweep, scalar_cross, is_valid_float, property)
 from .fixture import Fixture
 from . import shapes
 
@@ -378,11 +381,11 @@ fixtures=%s)""" % info
     @property
     def position(self):
         """The world body origin"""
-        return copy(self._xf.position)
+        return self._xf.position
 
     @position.setter
     def position(self, pos):
-        self._xf.position.set(*pos)
+        self._xf.position = pos
         self._transform_updated()
 
     @property
@@ -568,7 +571,7 @@ fixtures=%s)""" % info
         self._sweep.local_center.zero()
 
         if self._type in (Body.STATIC, Body.KINEMATIC):
-            self._sweep.c = copy(self._xf.position)
+            self._sweep.c = self._xf.position
             self._sweep.c0 = copy(self._sweep.c)
             return
 

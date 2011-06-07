@@ -1,10 +1,10 @@
 import cProfile
 import framework
-import pyramid
+import vertical_stack
 
 print('Profiler - Running main...')
 print('--------------------------')
-cProfile.runctx( """framework.main(pyramid.Pyramid)""", globals(), locals(), filename="profile_results" )
+cProfile.runctx( """framework.main(vertical_stack.VerticalStack)""", globals(), locals(), filename="profile_results" )
 print('---------DONE-------------')
 
 print('------------------')

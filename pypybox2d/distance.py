@@ -18,12 +18,17 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+__all__ = ('gjk_calls', 'gjk_max_iters', 'gjk_iters', 
+           'SimplexCache', 'SimplexVertex', 'Simplex', 'DistanceProxy'
+           'test_overlap', 'shape_distance',
+          )
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import *
+from .common import (Vec2, scalar_cross, distance)
 from .shapes import (Circle, Polygon, Edge, Loop, Shape)
 from .settings import (DISTANCE_MAX_ITERS, EPSILON_SQR, EPSILON)
 
@@ -456,9 +461,7 @@ def shape_distance(proxy_a, proxy_b, transform_a, transform_b, use_radii, cache=
 
     # These store the vertices of the last simplex so that we
     # can check for duplicates and prevent cycling.
-    save_a=[0,0,0]
-    save_b=[0,0,0]
-    save_count = 0
+    save_list = []
 
     closest_point = simplex.closest_point
     distance_sqr1 = closest_point.length_squared

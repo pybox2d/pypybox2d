@@ -18,10 +18,14 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('edge_separation', 'max_separation', 'find_incident_edge', 'clip_segment_to_line')
 __version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
 
 from copy import copy
-from .common import *
 from .contact_util import ManifoldPoint, ClipVertex
 
 def edge_separation(poly1, xf1, edge1, poly2, xf2):

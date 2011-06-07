@@ -18,12 +18,24 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('Jacobian', 
+           'Joint', 'DistanceJoint', 'RevoluteJoint', 'FrictionJoint', 
+           'PrismaticJoint', 'WeldJoint', 'RopeJoint', 'WheelJoint', 
+           'MouseJoint', 'PulleyJoint', 'GearJoint',
+           'INACTIVE_LIMIT', 'AT_LOWER_LIMIT', 'AT_UPPER_LIMIT', 'EQUAL_LIMITS', 
+           'ALLOWED_STRETCH'
+          )
+
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
-from .common import *
-from .settings import LINEAR_SLOP, ANGULAR_SLOP, MAX_LINEAR_CORRECTION, MAX_ANGULAR_CORRECTION
+from copy import copy
+from .common import (PI, Vec2, Vec3, Mat22, Mat33, 
+                     scalar_cross, clamp, is_valid_float, property)
+from .settings import (EPSILON, LINEAR_SLOP, ANGULAR_SLOP, MAX_LINEAR_CORRECTION, MAX_ANGULAR_CORRECTION)
 
 # TODO: __init__ doc strings
 
@@ -192,7 +204,7 @@ class DistanceJoint(Joint):
         self._mass = 0.0
 
     def __copy__(self):
-        return DistanceJoint(self.body_a, body_b, self.anchor_a, self.anchor_b, 
+        return DistanceJoint(self.body_a, self.body_b, self.anchor_a, self.anchor_b, 
                              self._frequency, self._damping_ratio,
                              self._length, self._collide_connected,
                              self._local_anchor_a, self._local_anchor_b)
@@ -355,9 +367,8 @@ class DistanceJoint(Joint):
 
         length = d.normalize()
         C = length - self._length
-        c = clamp(C, -MAX_LINEAR_CORRECTION, MAX_LINEAR_CORRECTION)
 
-        impulse = -self._mass * C
+        impulse = -self._mass * clamp(C, -MAX_LINEAR_CORRECTION, MAX_LINEAR_CORRECTION)
         self._u = d
         P = impulse * self._u
 
@@ -432,7 +443,7 @@ class RevoluteJoint(Joint):
         self._mass = Mat33()
 
     def __copy__(self):
-        return RevoluteJoint(self.body_a, body_b, None,
+        return RevoluteJoint(self.body_a, self.body_b, None,
                              self._reference_angle, self._lower_angle,
                              self._upper_angle, self._max_motor_torque,
                              self._motor_seeed, self._limit_enabled,
@@ -579,6 +590,7 @@ class RevoluteJoint(Joint):
         m1, m2 = b1._inv_mass, b2._inv_mass
         i1, i2 = b1._invI, b2._invI
 
+        # TODO: when rewriting Mat33 in C, these will need to be _col1, etc.
         self._mass.col1.x = m1 + m2 + r1.y * r1.y * i1 + r2.y * r2.y * i2
         self._mass.col2.x = -r1.y * r1.x * i1 - r2.y * r2.x * i2
         self._mass.col3.x = -r1.y * i1 - r2.y * i2
@@ -791,16 +803,16 @@ class RevoluteJoint(Joint):
             C = b2._sweep.c + r2 - b1._sweep.c - r1
 
         K1 = Mat22()
-        K1.col1.x = inv_mass1 + inv_mass2;  K1.col2.x = 0.0
-        K1.col1.y = 0.0;                    K1.col2.y = inv_mass1 + inv_mass2
+        K1._col1.x = inv_mass1 + inv_mass2;  K1._col2.x = 0.0
+        K1._col1.y = 0.0;                    K1._col2.y = inv_mass1 + inv_mass2
 
         K2 = Mat22()
-        K2.col1.x =  inv_i1 * r1.y * r1.y;  K2.col2.x = -inv_i1 * r1.x * r1.y
-        K2.col1.y = -inv_i1 * r1.x * r1.y;  K2.col2.y =  inv_i1 * r1.x * r1.x
+        K2._col1.x =  inv_i1 * r1.y * r1.y;  K2._col2.x = -inv_i1 * r1.x * r1.y
+        K2._col1.y = -inv_i1 * r1.x * r1.y;  K2._col2.y =  inv_i1 * r1.x * r1.x
 
         K3 = Mat22()
-        K3.col1.x =  inv_i2 * r2.y * r2.y;  K3.col2.x = -inv_i2 * r2.x * r2.y
-        K3.col1.y = -inv_i2 * r2.x * r2.y;  K3.col2.y =  inv_i2 * r2.x * r2.x
+        K3._col1.x =  inv_i2 * r2.y * r2.y;  K3._col2.x = -inv_i2 * r2.x * r2.y
+        K3._col1.y = -inv_i2 * r2.x * r2.y;  K3._col2.y =  inv_i2 * r2.x * r2.x
 
         K = K1 + K2 + K3
         impulse = K.solve(-C)
@@ -915,16 +927,16 @@ class FrictionJoint(Joint):
         i_a, i_b = ba._invI, bb._invI
 
         K1 = Mat22()
-        K1.col1.x = m_a + m_b;  K1.col2.x = 0.0
-        K1.col1.y = 0.0;        K1.col2.y = m_a + m_b
+        K1._col1.x = m_a + m_b;  K1._col2.x = 0.0
+        K1._col1.y = 0.0;        K1._col2.y = m_a + m_b
 
         K2 = Mat22()
-        K2.col1.x =  i_a * ra.y * ra.y; K2.col2.x = -i_a * ra.x * ra.y
-        K2.col1.y = -i_a * ra.x * ra.y; K2.col2.y =  i_a * ra.x * ra.x
+        K2._col1.x =  i_a * ra.y * ra.y; K2._col2.x = -i_a * ra.x * ra.y
+        K2._col1.y = -i_a * ra.x * ra.y; K2._col2.y =  i_a * ra.x * ra.x
 
         K3 = Mat22()
-        K3.col1.x =  i_b * rb.y * rb.y; K3.col2.x = -i_b * rb.x * rb.y
-        K3.col1.y = -i_b * rb.x * rb.y; K3.col2.y =  i_b * rb.x * rb.x
+        K3._col1.x =  i_b * rb.y * rb.y; K3._col2.x = -i_b * rb.x * rb.y
+        K3._col1.y = -i_b * rb.x * rb.y; K3._col2.y =  i_b * rb.x * rb.x
 
         K = K1 + K2 + K3
         self._linear_mass = K.inverse
@@ -1113,15 +1125,15 @@ class PrismaticJoint(Joint):
 
         ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
         rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
-        p1 = b1._sweep.c + ra
-        p2 = b2._sweep.c + rb
+        p1 = ba._sweep.c + ra
+        p2 = bb._sweep.c + rb
         d = p2 - p1
         axis = self._body_a.get_world_vector(self._local_x_axis);
 
-        v1 = b1._linear_velocity
-        v2 = b2._linear_velocity
-        w1 = b1._angular_velocity
-        w2 = b2._angular_velocity
+        v1 = ba._linear_velocity
+        v2 = bb._linear_velocity
+        w1 = ba._angular_velocity
+        w2 = bb._angular_velocity
 
         speed = d.dot(scalar_cross(w1, axis)) + axis.dot(v2 + scalar_cross(w2, rb) - v1 - scalar_cross(w1, ra))
         return speed
@@ -2368,16 +2380,16 @@ class MouseJoint(Joint):
         inv_i = b._invI
 
         K1 = Mat22()
-        K1.col1.x = inv_mass;	K1.col2.x = 0.0
-        K1.col1.y = 0.0;		K1.col2.y = inv_mass
+        K1._col1.x = inv_mass;	K1._col2.x = 0.0
+        K1._col1.y = 0.0;		K1._col2.y = inv_mass
 
         K2 = Mat22()
-        K2.col1.x =  inv_i * r.y * r.y;	K2.col2.x = -inv_i * r.x * r.y
-        K2.col1.y = -inv_i * r.x * r.y;	K2.col2.y =  inv_i * r.x * r.x
+        K2._col1.x =  inv_i * r.y * r.y;	K2._col2.x = -inv_i * r.x * r.y
+        K2._col1.y = -inv_i * r.x * r.y;	K2._col2.y =  inv_i * r.x * r.x
 
         K = K1 + K2
-        K.col1.x += self._gamma
-        K.col2.y += self._gamma
+        K._col1.x += self._gamma
+        K._col2.y += self._gamma
 
         self._mass = K.inverse
 

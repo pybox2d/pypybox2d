@@ -18,24 +18,75 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
-import math
-from .settings import EPSILON
+from __future__ import absolute_import
+__version__ = "$Revision$"
+__date__ = "$Date$"
+# $Source$
 
+import math
+from .settings import (EPSILON, MAX_FLOAT)
 from sys import version_info
+
+__all__ = (# Exceptions
+           'PhysicsError', 'LockedError', 'EmptyFixtureError',
+
+           # Constants
+           'PI', 'EPSILON', 'MAX_FLOAT', 'NUMBER_TYPES',
+
+           # Classes
+           'Vec2', 'Mat22', 'AABB', 'Transform',
+           'PyVec2', 'PyMat22', 'PyAABB', 'PyTransform',
+           'Mat33', 'Sweep',
+
+           # Functions
+           'scalar_cross', 'min_vector', 'max_vector', 'clamp', 'clamp_vector',
+           'next_power_of_two', 'is_power_of_two',
+           'is_valid_float', 'inv_sqrt',
+           'distance', 'distance_squared',
+
+           # For python 2.5 compatibility:
+           'property'
+          )
+
 if version_info >= (3,0,0):
     NUMBER_TYPES = (float, int)
 else:
     NUMBER_TYPES = (float, long, int)
 
+if version_info < (2,6,0):
+    # Getter/setter syntax for < Python 2.5
+    # Thanks to http://blog.devork.be/2008/04/xsetter-syntax-in-python-25.html
+    import sys
+    _property = property
+
+    class property(_property):
+        def __init__(self, fget, *args, **kwargs):
+            self.__doc__ = fget.__doc__
+            _property.__init__(self, fget, *args, **kwargs)
+
+        def setter(self, fset):
+            cls_ns = sys._getframe(1).f_locals
+            for k, v in cls_ns.iteritems():
+                if v == self:
+                    propname = k
+                    break
+            cls_ns[propname] = property(self.fget, fset,
+                                        self.fdel, self.__doc__)
+            return cls_ns[propname]
+
+else:
+    property = property
+
+
 del version_info
 PI = math.pi
+USE_PURE_PYTHON = False
 
 class PhysicsError(Exception): pass
 class LockedError(PhysicsError): pass
 class EmptyFixtureError(PhysicsError): pass
-class InvalidParameter(PhysicsError): pass
 
-class Vec2(object):
+class PyVec2(object):
     """A 2d column vector"""
     __slots__=['x', 'y']
     def __init__(self, x=0.0, y=0.0):
@@ -52,6 +103,7 @@ class Vec2(object):
         return Vec2(-self.x, -self.y)
     def __copy__(self):
         return Vec2(self.x, self.y)
+    copy = __copy__
     def __iadd__(self, other):
         ox, oy = other
         self.x += ox
@@ -130,7 +182,7 @@ class Vec2(object):
         try:
             return (self.x >= other[0] and self.y >= other[1])
         except:
-            return 1
+            return False
     def __getitem__(self, i):
         if i==0:
             return self.x
@@ -226,6 +278,7 @@ class Vec3(object):
         return Vec3(-self.x, -self.y, -self.z)
     def __copy__(self):
         return Vec3(self.x, self.y, self.z)
+    copy = __copy__
     def __iadd__(self, other):
         vx, vy, vz = other
         self.x += vx
@@ -383,21 +436,39 @@ class Vec3(object):
                     sz * vx - sx * vz,
                     sx * vy - sy * vx)
 
-class Mat22(object):
+class PyMat22(object):
     """
     2x2 matrix, stored in column-major order.
     """
-    __slots__=['col1', 'col2']
+    __slots__=['_col1', '_col2']
     def __init__(self, col1=(1, 0), col2=(0, 1)):
-        self.col1, self.col2=Vec2(*col1), Vec2(*col2)
+        self._col1, self._col2=Vec2(*col1), Vec2(*col2)
 
     def __str__(self):
         return \
 """
 [ %.2g %.2g
-  %.2g %.2g ]
-""" % (self.col1.x, self.col2.x,
-       self.col1.y, self.col2.y )
+%.2g %.2g ]
+""" % (self._col1.x, self._col2.x,
+   self._col1.y, self._col2.y )
+
+    @property
+    def col1(self):
+        return Vec2(*self._col1)
+    @col1.setter
+    def col1(self, value):
+        self._col1 = Vec2(*value)
+
+    @property
+    def col2(self):
+        return Vec2(*self._col2)
+    @col2.setter
+    def col2(self, value):
+        self._col2 = Vec2(*value)
+
+    def __copy__(self):
+        return Mat22(self._col1, self._col2)
+    copy = __copy__
 
     def __mul__(self, vec):
         """
@@ -405,45 +476,68 @@ class Mat22(object):
         then this transforms the vector from one frame to another.
         """
         v0, v1 = vec
-        return Vec2((self.col1.x * v0 + self.col2.x * v1),
-                    (self.col1.y * v0 + self.col2.y * v1))
+        return Vec2((self._col1.x * v0 + self._col2.x * v1),
+                    (self._col1.y * v0 + self._col2.y * v1))
  
     def __abs__(self):
-        return Mat22(abs(self.col1), abs(self.col2))
+        return Mat22(abs(self._col1), abs(self._col2))
     def __add__(self, other):
-        return Mat22(self.col1 + other.col1, self.col2 + other.col2)
+        return Mat22(self._col1 + other[0], self._col2 + other[1])
     def __iadd__(self, other):
-        self.col1 += other.col1
-        self.col2 += other.col2
+        self._col1 += other[0]
+        self._col2 += other[1]
+        return self
     def __sub__(self, other):
-        return Mat22(self.col1 - other.col1, self.col2 - other.col2)
+        return Mat22(self._col1 - other[0], self._col2 - other[1])
     def __isub__(self, other):
-        self.col1 -= other.col1
-        self.col2 -= other.col2
+        self._col1 -= other[0]
+        self._col2 -= other[1]
+        return self
     def __eq__(self, other):
         try:
-            return (self.col1==other[0] and self.col2==other[1])
+            return (self._col1==other[0] and self._col2==other[1])
         except:
             return False
     def __ne__(self, other):
         try:
-            return (self.col1!=other[0] or self.col2!=other[1])
+            return (self._col1!=other[0] or self._col2!=other[1])
         except:
             return True
-
-    __iter__ = lambda self: iter((self.col1, self.col2))
+    def __lt__(self, other):
+        try:
+            return (self._col1 < other[0] and self._col2 < other[1])
+        except:
+            return False
+    def __gt__(self, other):
+        try:
+            return (self._col1 > other[0] and self._col2 > other[1])
+        except:
+            return False
+    def __le__(self, other):
+        try:
+            return (self._col1 <= other[0] and self._col2 <= other[1])
+        except:
+            return False
+    def __ge__(self, other):
+        try:
+            return (self._col1 >= other[0] and self._col2 >= other[1])
+        except:
+            return False
+    __iter__ = lambda self: iter((self._col1, self._col2))
+    def __len__(self):
+        return 2
     def __getitem__(self, i):
         if i==0:
-            return self.col1
+            return Vec2(*self._col1)
         elif i==1:
-            return self.col2
+            return Vec2(*self._col2)
         else:
             raise IndexError('Index must be in (0,1)')
     def __setitem__(self, i, value):
         if i==0:
-            self.col1=Vec2(*value)
+            self._col1=Vec2(*value)
         elif i==1:
-            self.col2=Vec2(*value)
+            self._col2=Vec2(*value)
         else:
             raise IndexError('Index must be in (0,1)')
 
@@ -454,11 +548,11 @@ class Mat22(object):
         Can be used as .set(Transform()) or .set(col1, col2)
         """
         if col2 is not None:
-            self.col1=Vec2(*other)
-            self.col2=Vec2(*col2)
+            self._col1=Vec2(*other)
+            self._col2=Vec2(*col2)
         else:
-            self.col1=Vec2(*other.col1)
-            self.col2=Vec2(*other.col2)
+            self._col1=Vec2(*other.col1)
+            self._col2=Vec2(*other.col2)
 
     def mul_t(self, other):
         """
@@ -471,16 +565,16 @@ class Mat22(object):
         """
         # TODO break this up
         if isinstance(other, (list, tuple, Vec2)):
-            return Vec2(self.col1.dot(other), self.col2.dot(other))
+            return Vec2(self._col1.dot(other), self._col2.dot(other))
         else:
             return Mat22(
-                ((self.col1.dot(other.col1)), (self.col2.dot(other.col1))),
-                ((self.col1.dot(other.col2)), (self.col2.dot(other.col2))),
+                ((self._col1.dot(other.col1)), (self._col2.dot(other.col1))),
+                ((self._col1.dot(other.col2)), (self._col2.dot(other.col2))),
                 )
         
     @property
     def angle(self):
-        return math.atan2(self.col1.y, self.col1.x)
+        return math.atan2(self._col1.y, self._col1.x)
 
     @angle.setter
     def angle(self, radians):
@@ -489,8 +583,8 @@ class Mat22(object):
         """
         c=math.cos(radians)
         s=math.sin(radians)
-        self.col1.x=c; self.col2.x=-s
-        self.col1.y=s; self.col2.y=c
+        self._col1.x=c; self._col2.x=-s
+        self._col1.y=s; self._col2.y=c
 
     @property
     def inverse(self):
@@ -499,22 +593,20 @@ class Mat22(object):
         """ 
         # a b <=> col1.x col2.x
         # c d     col1.y col2.y
-        B=Mat22()
-        a, b=self.col1.x, self.col2.x
-        c, d=self.col1.y, self.col2.y
+        a, b=self._col1.x, self._col2.x
+        c, d=self._col1.y, self._col2.y
         det=a*d - b*c
         if det != 0.0:
             det = 1.0 / det
 
-        B.col1.x = det*d ; B.col2.x = -det * b
-        B.col1.y =-det*c ; B.col2.y =  det * a
-        return B
+        return Mat22(( det * d, -det * c),
+                     (-det * b,  det * a))
 
     def solve(self, vec):
         """ Solve A * x = vec, a column vector. This is more efficient
             than computing the inverse in one-shot cases."""
-        a, b=self.col1.x, self.col2.x
-        c, d=self.col1.y, self.col2.y
+        a, b=self._col1.x, self._col2.x
+        c, d=self._col1.y, self._col2.y
         det=a*d - b*c
         if det != 0.0:
             det = 1.0 / det
@@ -527,16 +619,16 @@ class Mat22(object):
         [ 1 0
           0 1 ]
         """
-        self.col1.x=1.0; self.col2.x=0.0
-        self.col1.y=0.0; self.col2.y=1.0
+        self._col1.x=1.0; self._col2.x=0.0
+        self._col1.y=0.0; self._col2.y=1.0
 
     def set_zero(self):
         """
         [ 0 0
           0 0 ]
         """
-        self.col1.x=0.0; self.col2.x=0.0
-        self.col1.y=0.0; self.col2.y=0.0
+        self._col1.x=0.0; self._col2.x=0.0
+        self._col1.y=0.0; self._col2.y=0.0
 
 class Mat33(object):
     """
@@ -568,6 +660,11 @@ class Mat33(object):
                     (self.col1.z * vec[0] + self.col2.z * vec[1] + self.col3.z * vec[2]))
 
     __iter__ = lambda self: iter((self.col1, self.col2, self.col3))
+    def __len__(self):
+        return 3
+    def __copy__(self):
+        return Mat33(self.col1, self.col2, self.col3)
+    copy = __copy__
     def __getitem__(self, i):
         if i==0:
             return self.col1
@@ -651,7 +748,7 @@ class Mat33(object):
         return Vec2(det * (a22 * vec[0] - a12 * vec[1]),
                     det * (a11 * vec[1] - a21 * vec[0]))
 
-class Transform(object):
+class PyTransform(object):
     """
     A Transform contains translation and rotation. It is used to represent
     the position and orientation of rigid frames.
@@ -686,6 +783,7 @@ class Transform(object):
 
     def __copy__(self):
         return Transform(self._position, self._rotation)
+    copy = __copy__
 
     def __repr__(self):
         return 'Transform(position=%s, angle=%g)' % (
@@ -705,8 +803,8 @@ class Transform(object):
         """
         if isinstance(other, (list, tuple, Vec2)):
             return self._rotation.mul_t(other-self._position)
-        elif isinstance(other, Transform):
-            return Transform(other.position-self._position, self._rotation.mul_t(other._rotation))
+        elif isinstance(other, PyTransform):
+            return PyTransform(other.position-self._position, self._rotation.mul_t(other._rotation))
         else:
             raise TypeError
 
@@ -714,14 +812,11 @@ class Transform(object):
         """
         
         """
-        if isinstance(other, (list, tuple, Vec2)):
-            o0, o1 = other
-            return Vec2(self._position.x + self._rotation.col1.x * o0 + self._rotation.col2.x * o1,
-                        self._position.y + self._rotation.col1.y * o0 + self._rotation.col2.y * o1)
-        elif isinstance(other, Transform):
-            raise NotImplementedError # TODO (not necessary)
-        else:
-            raise TypeError
+        o0, o1 = other
+        col1 = self._rotation.col1
+        col2 = self._rotation.col2
+        return Vec2(self._position.x + col1.x * o0 + col2.x * o1,
+                    self._position.y + col1.y * o0 + col2.y * o1)
 
     def __eq__(self, other):
         try:
@@ -742,51 +837,69 @@ class Transform(object):
     def angle(self, angle):
         self._rotation.angle=angle
 
-class AABB(object):
+
+class PyAABB(object):
     """An axis-aligned bounding box"""
-    __slots__=['upper_bound', 'lower_bound']
+    __slots__=['_upper_bound', '_lower_bound']
     def __init__(self, lower_bound=(0, 0), upper_bound=(0, 0)):
-        self.lower_bound = Vec2(*lower_bound)
-        self.upper_bound = Vec2(*upper_bound)
+        self._lower_bound = Vec2(*lower_bound)
+        self._upper_bound = Vec2(*upper_bound)
 
     def __repr__(self):
         return 'AABB(lower_bound=%s, upper_bound=%s)' \
-                % (self.lower_bound, self.upper_bound)
+                % (self._lower_bound, self._upper_bound)
+
+    @property
+    def lower_bound(self):
+        return Vec2(*self._lower_bound)
+    @lower_bound.setter
+    def lower_bound(self, value):
+        self._lower_bound.set(*value)
+
+    @property
+    def upper_bound(self):
+        return Vec2(*self._upper_bound)
+    @upper_bound.setter
+    def upper_bound(self, value):
+        self._upper_bound.set(*value)
 
     @property
     def valid(self):
-        d=self.upper_bound-self.lower_bound
+        d=self._upper_bound-self._lower_bound
         area_valid=(d.x >= 0.0 and d.y >= 0.0)
-        return area_valid and self.lower_bound.valid and self.upper_bound.valid
+        return area_valid and self._lower_bound.valid and self._upper_bound.valid
 
-    __iter__ = lambda self: iter((self.lower_bound, self.upper_bound))
+    __iter__ = lambda self: iter((self._lower_bound, self._upper_bound))
+    def __len__(self):
+        return 2
     def __getitem__(self, i):
         if i==0:
-            return self.lower_bound
+            return self._lower_bound
         elif i==1:
-            return self.upper_bound
+            return self._upper_bound
         else:
             raise IndexError('Index must be in (0,1)')
     def __setitem__(self, i, value):
         if i==0:
-            self.lower_bound=Vec2(*value)
+            self._lower_bound=Vec2(*value)
         elif i==1:
-            self.upper_bound=Vec2(*value)
+            self._upper_bound=Vec2(*value)
         else:
             raise IndexError('Index must be in (0,1)')
     def __eq__(self, other):
         try:
-            return (self.lower_bound == other[0] and self.upper_bound == other[1])
+            return (self._lower_bound == other[0] and self._upper_bound == other[1])
         except:
             return False
     def __ne__(self, other):
         try:
-            return (self.lower_bound != other[0] or self.upper_bound != other[1])
+            return (self._lower_bound != other[0] or self._upper_bound != other[1])
         except:
             return True
 
     def __copy__(self):
-        return AABB(self.lower_bound, self.upper_bound)
+        return AABB(self._lower_bound, self._upper_bound)
+    copy = __copy__
 
     def ray_cast(self, p1, p2, max_fraction):
         """
@@ -796,9 +909,10 @@ class AABB(object):
         @param p2 point 2
         @param max_fraction maximum fraction
         """
+        # TODO raise exception on fail to make same as C AABB
         # From Real-time Collision Detection, p179.
-        tmin = -settings.MAX_FLOAT
-        tmax = settings.MAX_FLOAT
+        tmin = -MAX_FLOAT
+        tmax = MAX_FLOAT
 
         p = p1
         d = Vec2(*p2) - p1
@@ -808,12 +922,12 @@ class AABB(object):
         for i in (0, 1):
             if abs_d[i] < EPSILON:
                 # Parallel.
-                if p[i] < self.lower_bound[i] or self.upper_bound[i] < p[i]:
+                if p[i] < self._lower_bound[i] or self._upper_bound[i] < p[i]:
                     return False, None, 0.0
             else:
                 inv_d = 1.0 / d[i]
-                t1 = (self.lower_bound[i] - p[i]) * inv_d
-                t2 = (self.upper_bound[i] - p[i]) * inv_d
+                t1 = (self._lower_bound[i] - p[i]) * inv_d
+                t2 = (self._upper_bound[i] - p[i]) * inv_d
 
                 # Sign of the normal vector.
                 s = -1.0
@@ -844,8 +958,8 @@ class AABB(object):
 
     def test_overlap(self, b):
         """Test if this and another aabb overlap"""
-        d1 = b.lower_bound - self.upper_bound
-        d2 = self.lower_bound - b.upper_bound
+        d1 = b._lower_bound - self._upper_bound
+        d2 = self._lower_bound - b._upper_bound
 
         if d1.x > 0.0 or d1.y > 0.0:
             return False
@@ -855,50 +969,47 @@ class AABB(object):
 
     @property
     def center(self):
-        """ Get the center of the AABB."""
-        return 0.5 * (self.lower_bound + self.upper_bound)
+        """Get the center of the AABB."""
+        return 0.5 * (self._lower_bound + self._upper_bound)
 
     @property
     def extents(self):
-        """ Get the extents of the AABB (half-widths)."""
-        return 0.5 * (self.upper_bound - self.lower_bound)
+        """Get the extents of the AABB (half-widths)."""
+        return 0.5 * (self._upper_bound - self._lower_bound)
 
     @property
     def perimeter(self):
-        """ Get the perimeter length"""
-        wx = self.upper_bound.x - self.lower_bound.x
-        wy = self.upper_bound.y - self.lower_bound.y
+        """Get the perimeter length"""
+        wx = self._upper_bound.x - self._lower_bound.x
+        wy = self._upper_bound.y - self._lower_bound.y
         return 2.0 * (wx + wy)
 
     def combine(self, aabb):
-        """ Combine an AABB into this one."""
-        self.lower_bound = min_vector(self.lower_bound, aabb.lower_bound)
-        self.upper_bound = max_vector(self.upper_bound, aabb.upper_bound)
+        """Combine an AABB into this one."""
+        self._lower_bound = min_vector(self._lower_bound, aabb._lower_bound)
+        self._upper_bound = max_vector(self._upper_bound, aabb._upper_bound)
         return self
 
     __iadd__=combine
 
     def combine_two(self, aabb1, aabb2):
-        """ Combine two AABBs into this one, ignoring the current AABB."""
-        self.lower_bound = min_vector(aabb1.lower_bound, aabb2.lower_bound)
-        self.upper_bound = max_vector(aabb1.upper_bound, aabb2.upper_bound)
+        """Combine two AABBs into this one, ignoring the current AABB."""
+        self._lower_bound = min_vector(aabb1._lower_bound, aabb2._lower_bound)
+        self._upper_bound = max_vector(aabb1._upper_bound, aabb2._upper_bound)
         return self
 
-    @classmethod
-    def combine_AABBs(cls, aabb1, aabb2):
-        """ classmethod: Combine two AABBs and return a new one."""
-        ret=AABB()
-        ret.lower_bound = min_vector(aabb1.lower_bound, aabb2.lower_bound)
-        ret.upper_bound = max_vector(aabb1.upper_bound, aabb2.upper_bound)
+    def __add__(self, other):
+        ret=AABB(min_vector(self._lower_bound, other._lower_bound),
+                 max_vector(self._upper_bound, other._upper_bound))
         return ret
 
     def contains(self, aabb):
-        """ Does this aabb contain the provided AABB?"""
+        """Does this aabb contain the provided AABB?"""
         result = True
-        result = result and (self.lower_bound.x <= aabb.lower_bound.x)
-        result = result and (self.lower_bound.y <= aabb.lower_bound.y)
-        result = result and (aabb.upper_bound.x <= self.upper_bound.x)
-        result = result and (aabb.upper_bound.y <= self.upper_bound.y)
+        result = result and (self._lower_bound.x <= aabb._lower_bound.x)
+        result = result and (self._lower_bound.y <= aabb._lower_bound.y)
+        result = result and (aabb._upper_bound.x <= self._upper_bound.x)
+        result = result and (aabb._upper_bound.y <= self._upper_bound.y)
         return result
 
 class Sweep(object):
@@ -920,7 +1031,8 @@ class Sweep(object):
 
     def __copy__(self):
         return Sweep(self.local_center, self.c0, self.c, self.a0, self.a, self.alpha0)
-    
+    copy = __copy__
+
     def __repr__(self):
         return 'Sweep(local_center=%s, c0=%s, c=%s, a0=%g, a=%g, alpha0=%g)' % (
                       self.local_center, self.c0, self.c, self.a0, self.a, self.alpha0)
@@ -930,9 +1042,9 @@ class Sweep(object):
         Get the interpolated transform at a specific time.
         beta: is a factor in [0,1], where 0 indicates alpha0.
         """
-        xf = Transform()
-        xf.position = (1.0 - beta) * self.c0 + beta * self.c
-        xf._rotation.angle = (1.0 - beta) * self.a0 + beta * self.a
+
+        xf = Transform(position=(1.0 - beta) * self.c0 + beta * self.c,
+                       angle=(1.0 - beta) * self.a0 + beta * self.a)
         
         # Shift to origin
         xf.position -= xf._rotation * self.local_center
@@ -954,12 +1066,6 @@ class Sweep(object):
         d=2.0 * PI * math.floor(self.a0 / (2.0 * PI))
         self.a0 -= d
         self.a -= d
-
-def clamp(value, low, high):
-    if isinstance(value, Vec2):
-        return max_vector(low, min_vector(value, high))
-    else:
-        return max(low, min(value, high))
 
 def next_power_of_two(x):
     """"Next Largest Power of 2
@@ -983,18 +1089,38 @@ def is_valid_float(x):
 
 def inv_sqrt(x):
     return 1.0 / math.sqrt(x)
-def min_vector(v1, v2):
-    return Vec2(min(v1[0], v2[0]), min(v1[1], v2[1]))
-def max_vector(v1, v2):
-    return Vec2(max(v1[0], v2[0]), max(v1[1], v2[1]))
 def distance(p1, p2):
     c = p1 - p2
     return c.length
 def distance_squared(p1, p2):
     c = p1 - p2
     return c.dot(c)
-def scalar_cross(scalar, vector):
-    return vector._scalar_cross(scalar)
+
+try:
+    if USE_PURE_PYTHON:
+        raise
+    from ._common import Vec2
+    from ._common import (scalar_cross, min_vector, max_vector, clamp, clamp_vector)
+    from ._common import Mat22
+    from ._common import Transform
+    from ._common import AABB
+    print('Using C extension')
+except:
+    print('Using Pure Python')
+    Mat22 = PyMat22
+    Transform = PyTransform
+    AABB = PyAABB
+    Vec2 = PyVec2
+    def scalar_cross(scalar, vector):
+        return vector._scalar_cross(scalar)
+    def min_vector(v1, v2):
+        return Vec2(min(v1[0], v2[0]), min(v1[1], v2[1]))
+    def max_vector(v1, v2):
+        return Vec2(max(v1[0], v2[0]), max(v1[1], v2[1]))
+    def clamp_vector(value, low, high):
+        return max_vector(low, min_vector(value, high))
+    def clamp(value, low, high):
+        return max(low, min(value, high))
 
 if __name__=='__main__':
     a=Vec2()
@@ -1079,7 +1205,7 @@ if __name__=='__main__':
     assert(a.contains(b))
     assert(not b.contains(a))
     
-    c=AABB.combine_AABBs(a, b)
+    c=a + b
     assert(c == a)
     assert(c != b)
 

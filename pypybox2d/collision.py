@@ -18,13 +18,21 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('ABSOLUTE_TOL', 'RELATIVE_TOL',
+           'ISOLATED', 'CONCAVE', 'FLAT', 'CONVEX',
+           'collide_circles', 'collide_polygon_circle', 
+           'collide_polygons', 'collide_edge_circle', 'collide_edge_polygon',
+           'EPAxis', 'EPFatEdge', 'EPProxy', 'EPCollider'
+           )
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
-from .common import *
-from .collision_util import *
-from .contact_util import Manifold
+from .common import (Vec2, distance_squared)
+from .collision_util import (max_separation, find_incident_edge, clip_segment_to_line)
+from .contact_util import (ManifoldPoint, ClipVertex, Manifold)
 from .settings import (MAX_FLOAT, EPSILON, MAX_MANIFOLD_POINTS, POLYGON_RADIUS, ANGULAR_SLOP)
 
 # -- defines --
@@ -270,8 +278,8 @@ def collide_edge_circle(manifold, edge_a, xf_a, circle_b, xf_b):
             return
 
         # Is there an edge connected to A?
-        if edge_a.v0 is not None:
-            A1 = edge_a.m_vertex0
+        if edge_a._vertex0 is not None:
+            A1 = edge_a._vertex0
             B1 = A
             e1 = B1 - A1
             u1 = e1.dot(B1 - Q)
@@ -300,7 +308,7 @@ def collide_edge_circle(manifold, edge_a, xf_a, circle_b, xf_b):
             return
 
         # Is there an edge connected to B?
-        if edge_a.v3 is not None:
+        if edge_a._vertex3 is not None:
             B2 = edge_a._vertex3
             A2 = B
             e2 = B2 - A2

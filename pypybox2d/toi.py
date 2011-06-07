@@ -18,13 +18,22 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('toi_calls', 'toi_max_root_iters', 'toi_root_iters', 'toi_max_iters', 'toi_iters', 
+           'UNKNOWN', 'FAILED', 'OVERLAPPED', 'TOUCHING', 'SEPARATED',
+           'SeparationFunction', 
+           'time_of_impact')
+
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .distance import *
 from .settings import (LINEAR_SLOP, TOI_MAX_ITERS) #, MAX_POLYGON_VERTICES
+from . import distance
+from .shapes import Shape
+
 toi_calls = 0
 toi_max_root_iters = 0
 toi_root_iters = 0
@@ -212,6 +221,7 @@ def time_of_impact(proxy_a, proxy_b, sweep_a, sweep_b, t_max):
     a fraction between [0,tMax]. This uses a swept separating axis and may miss some intermediate,
     non-tunneling collision. If you change the time interval, you should call this function
     again.
+
     Note: use distance.shape_distance to compute the contact point and normal at the time of impact.
     """
     global toi_calls
@@ -222,14 +232,14 @@ def time_of_impact(proxy_a, proxy_b, sweep_a, sweep_b, t_max):
     # CCD via the local separating axis method. This seeks progression
     # by computing the largest time at which separation is maintained.
 
-    if not isinstance(proxy_a, DistanceProxy):
+    if not isinstance(proxy_a, distance.DistanceProxy):
         if not isinstance(proxy_a, Shape):
             raise ValueError('proxy_a: Must be either a DistanceProxy or a Shape')
-        proxy_a = DistanceProxy(proxy_a, 0)
-    if not isinstance(proxy_b, DistanceProxy):
+        proxy_a = distance.DistanceProxy(proxy_a, 0)
+    if not isinstance(proxy_b, distance.DistanceProxy):
         if not isinstance(proxy_b, Shape):
             raise ValueError('proxy_b: Must be either a DistanceProxy or a Shape')
-        proxy_b = DistanceProxy(proxy_b, 0)
+        proxy_b = distance.DistanceProxy(proxy_b, 0)
 
     toi_calls += 1
 
@@ -253,7 +263,7 @@ def time_of_impact(proxy_a, proxy_b, sweep_a, sweep_b, t_max):
     iter_ = 0
 
     # Prepare input for distance query.
-    cache = SimplexCache()
+    cache = distance.SimplexCache()
 
     # The outer loop progressively attempts to compute new separating axes.
     # This loop terminates when an axis is repeated (no progress is made).
@@ -263,7 +273,7 @@ def time_of_impact(proxy_a, proxy_b, sweep_a, sweep_b, t_max):
 
         # Get the distance between shapes. We can also use the results
         # to get a separating axis.
-        dist_info = shape_distance(proxy_a, proxy_b, xf_a, xf_b, False, cache)
+        dist_info = distance.shape_distance(proxy_a, proxy_b, xf_a, xf_b, False, cache)
         _point_a, _point_b, out_distance, _iterations = dist_info
 
         # If the shapes are overlapped, we give up on continuous collision.

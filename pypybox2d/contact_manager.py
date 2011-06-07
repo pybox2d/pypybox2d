@@ -18,12 +18,15 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('Island', 'ContactManager')
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import *
+from .common import (clamp, property)
 from .broadphase import BroadPhase
 from .contact import (Contact, ContactSolver)
 from . import settings

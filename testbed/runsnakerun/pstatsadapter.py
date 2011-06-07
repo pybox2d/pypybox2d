@@ -1,7 +1,7 @@
 import wx, sys, os, logging
 log = logging.getLogger( __name__ )
 from squaremap import squaremap
-from runsnakerun import pstatsloader
+import pstatsloader
 
 class PStatsAdapter(squaremap.DefaultAdapter):
 

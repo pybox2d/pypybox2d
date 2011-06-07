@@ -18,13 +18,19 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('mix_friction', 'mix_restitution', 
+           'ManifoldPoint', 'ClipVertex', 'Manifold', 'WorldManifold', 
+           'ContactRegister', 'ContactConstraintPoint', 'ContactConstraint')
+
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 import math
 from copy import copy
-from .common import *
+from .common import (Vec2, distance_squared)
 from .settings import (MAX_MANIFOLD_POINTS, EPSILON_SQR)
 
 def mix_friction(friction1, friction2):

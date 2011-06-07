@@ -18,13 +18,15 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+__all__ = ('TreeNode', 'DynamicTree',)
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 import weakref
 from copy import copy
-from .common import *
+from .common import (Vec2, AABB, scalar_cross, min_vector, max_vector, is_power_of_two, property)
 from .settings import (AABB_EXTENSION, AABB_MULTIPLIER, MAX_FLOAT)
 
 class TreeNode(object):
@@ -172,14 +174,14 @@ class DynamicTree(object):
         # Predict AABB displacement.
         d = AABB_MULTIPLIER * displacement
         if d.x < 0.0:
-            b.lower_bound.x += d.x
+            b.lower_bound += (d.x, 0)
         else:
-            b.upper_bound.x += d.x
+            b.upper_bound += (d.x, 0)
 
         if d.y < 0.0:
-            b.lower_bound.y += d.y
+            b.lower_bound += (0, d.y)
         else:
-            b.upper_bound.y += d.y
+            b.upper_bound += (0, d.y)
        
         node.aabb = b
         self._insert_leaf(node)
@@ -337,7 +339,7 @@ class DynamicTree(object):
                 for node_j in nodes:
                     aabb_j = node_j.aabb
 
-                    cost = AABB.combine_AABBs(aabb_i, aabb_j).perimeter
+                    cost = (aabb_i + aabb_j).perimeter
                     if cost < min_cost:
                         min_i = node_i
                         min_j = node_j
@@ -407,7 +409,7 @@ class DynamicTree(object):
 
     def _insert_leaf(self, leaf):
         def descend_cost(child, leaf_AABB, inheritance_cost):
-            aabb = AABB.combine_AABBs(leaf_AABB, child.aabb)
+            aabb = leaf_AABB + child.aabb
             if child.leaf:
                 _cost = aabb.perimeter + inheritance_cost
             else:
@@ -429,7 +431,7 @@ class DynamicTree(object):
         while not node.leaf:
             area = node.aabb.perimeter
 
-            combined_aabb = AABB.combine_AABBs(node.aabb, leaf_AABB)
+            combined_aabb = node.aabb + leaf_AABB
             combined_area = combined_aabb.perimeter
 
             # Cost of creating a new parent for this node and the new leaf
@@ -462,7 +464,7 @@ class DynamicTree(object):
 
         new_parent.parent = old_parent
         new_parent._user_data = None
-        new_parent.aabb = AABB.combine_AABBs(leaf_AABB, sibling.aabb)
+        new_parent.aabb = leaf_AABB + sibling.aabb
         new_parent.height = sibling.height + 1
 
         if old_parent:
@@ -699,7 +701,7 @@ class DynamicTree(object):
 
         assert(node.height == height)
 
-        aabb = AABB.combine_AABBs(child1.aabb, child2.aabb)
+        aabb = child1.aabb + child2.aabb
        
         assert(aabb.lower_bound == node.aabb.lower_bound)
         assert(aabb.upper_bound == node.aabb.upper_bound)

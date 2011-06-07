@@ -18,11 +18,13 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('BroadPhase',)
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
-from .common import *
 from .dynamictree import DynamicTree
 
 class BroadPhase(object):

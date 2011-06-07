@@ -1,13 +1,40 @@
-from . import shapes
-from . import distance
-from . import settings
-from . import collision
-from .common import *
-from .contact_util import *
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# C++ version Copyright (c) 2006-2011 Erin Catto http://www.box2d.org
+# Python port by Ken Lauer / http://pybox2d.googlecode.com
+# 
+# This software is provided 'as-is', without any express or implied
+# warranty.  In no event will the authors be held liable for any damages
+# arising from the use of this software.
+# Permission is granted to anyone to use this software for any purpose,
+# including commercial applications, and to alter it and redistribute it
+# freely, subject to the following restrictions:
+# 1. The origin of this software must not be misrepresented; you must not
+# claim that you wrote the original software. If you use this software
+# in a product, an acknowledgment in the product documentation would be
+# appreciated but is not required.
+# 2. Altered source versions must be plainly marked as such, and must not be
+# misrepresented as being the original software.
+# 3. This notice may not be removed or altered from any source distribution.
+
+from __future__ import absolute_import
+
+__all__ = ('Contact', 'ContactSolver')
 
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
+
+from copy import copy
+from . import shapes
+from . import distance
+from . import settings
+from . import collision
+from .common import (Vec2, Mat22, scalar_cross, clamp, distance_squared, property)
+from .contact_util import (mix_friction, mix_restitution, 
+                           Manifold, WorldManifold, 
+                           ContactRegister, ContactConstraint)
 
 EPSILON = settings.EPSILON
 EPSILON_SQR = settings.EPSILON_SQR
@@ -471,8 +498,8 @@ class ContactSolver(object):
                 MAX_CONDITION_NUMBER = 1000.0
                 if (k11 ** 2)  < (MAX_CONDITION_NUMBER * (k11 * k22 - k12 ** 2)):
                     # K is safe to invert.
-                    cc.K.col1.set(k11, k12)
-                    cc.K.col2.set(k12, k22)
+                    cc.K.col1 = Vec2(k11, k12)
+                    cc.K.col2 = Vec2(k12, k22)
                     cc.normal_mass = cc.K.inverse
                 else:
                     # The constraints are redundant, just use one.

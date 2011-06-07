@@ -18,12 +18,15 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('FixtureProxy', 'Fixture')
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import *
+from .common import (EmptyFixtureError, is_valid_float, property)
 
 class FixtureProxy(object):
     __slots__=['aabb', 'fixture', 'child_index', 'proxy_ref', '__weakref__']
@@ -282,7 +285,7 @@ class Fixture(object):
             aabb2 = self._shape.compute_aabb(xf2, proxy.child_index)
 
             proxy.aabb.combine_two(aabb1, aabb2)
-            displacement = xf2.position - xf1.position
+            displacement = xf2._position - xf1._position
 
             broadphase.move_proxy(proxy.proxy_ref, proxy.aabb, displacement)
 

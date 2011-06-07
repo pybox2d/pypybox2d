@@ -18,13 +18,17 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('MassData', 'Shape', 'Circle', 'Polygon', 'Edge', 'Loop')
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
-import numbers
+import math
 from copy import copy
-from .common import *
+from .common import (PI, NUMBER_TYPES, Vec2, AABB, Transform, 
+                     min_vector, max_vector, property)
 from .settings import (EPSILON, EPSILON_SQR, POLYGON_RADIUS)
 
 class MassData(object):
@@ -119,7 +123,7 @@ class Circle(Shape):
 
     def test_point(self, transform, p):
         """See Shape.test_point"""
-        center=transform.position + transform._rotation*self.position
+        center=transform._position + transform._rotation*self.position
         d=p-center
         return (d*d) <= self.radius**2
 
@@ -129,7 +133,7 @@ class Circle(Shape):
         # From Section 3.1.2
         # x = s + a * r
         # norm(x) = radius
-        position = transform.position + transform._rotation*self.position
+        position = transform._position + transform._rotation*self.position
         s = p1 - position
         b = s * s - self.radius**2
 
@@ -161,9 +165,9 @@ class Circle(Shape):
             aabb=use_instance
         else:
             aabb=AABB()
-        p = xf.position + xf._rotation*self.position
-        aabb.lower_bound.set(p.x - self.radius, p.y - self.radius)
-        aabb.upper_bound.set(p.x + self.radius, p.y + self.radius)
+        p = xf._position + xf._rotation*self.position
+        aabb.lower_bound = Vec2(p.x - self.radius, p.y - self.radius)
+        aabb.upper_bound = Vec2(p.x + self.radius, p.y + self.radius)
         return aabb
 
     def compute_mass(self, density, use_instance=None):
@@ -213,7 +217,7 @@ class Polygon(Shape):
 
     def test_point(self, xf, p):
         """See Shape.test_point"""
-        p_local=xf._rotation.mul_t(p - xf.position)
+        p_local=xf._rotation.mul_t(p - xf._position)
         for normal, vertex in zip(self._normals, self._vertices):
             dot=normal.dot(p_local - vertex)
             if dot > 0.0:
@@ -224,8 +228,8 @@ class Polygon(Shape):
         """See Shape.ray_cast"""
 
         # Put the ray into the polygon's frame of reference.
-        p1 = xf._rotation.mul_t(p1 - xf.position)
-        p2 = xf._rotation.mul_t(p2 - xf.position)
+        p1 = xf._rotation.mul_t(p1 - xf._position)
+        p2 = xf._rotation.mul_t(p2 - xf._position)
         d = p2 - p1
         
         lower, upper = 0.0, max_fraction
@@ -329,7 +333,7 @@ class Polygon(Shape):
         I = 0.0
 
         # s is the reference point for forming triangles.
-        # It's location doesn't change the result (except for rounding error).
+        # Its location doesn't change the result (except for rounding error).
         s=Vec2()
 
         # This code would put the reference point inside the polygon.
@@ -517,8 +521,8 @@ class Edge(Shape):
         # p1 + t * d = v1 + s * e
         # s * e - t * d = p1 - v1
         # Put the ray into the edge's frame of reference.
-        p1 = xf._rotation.mul_t(p1 - xf.position)
-        p2 = xf._rotation.mul_t(p2 - xf.position)
+        p1 = xf._rotation.mul_t(p1 - xf._position)
+        p2 = xf._rotation.mul_t(p2 - xf._position)
         d = p2 - p1
 
         v1 = self._vertex1

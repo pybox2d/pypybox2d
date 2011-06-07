@@ -18,6 +18,7 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
@@ -29,11 +30,29 @@ from . import shapes
 from . import joints
 from . import dynamictree
 
-from .common import *
 from .world import World
 from .fixture import Fixture
 from .body import Body
 from .shapes import (Circle, Polygon, Edge, Loop)
 from .joints import (DistanceJoint, RevoluteJoint, FrictionJoint, PrismaticJoint,
                     WeldJoint, RopeJoint, WheelJoint, MouseJoint, PulleyJoint, GearJoint)
+from .common import (
+            # Exceptions
+           PhysicsError, LockedError, EmptyFixtureError,
 
+           # Constants
+           PI, EPSILON, MAX_FLOAT, NUMBER_TYPES,
+
+           # Classes
+           Vec2, Mat22, AABB, Transform,
+           PyVec2, PyMat22, PyAABB, PyTransform,
+           Mat33, Sweep,
+
+           # Functions
+           scalar_cross, min_vector, max_vector, clamp, clamp_vector,
+           next_power_of_two, is_power_of_two,
+           is_valid_float, inv_sqrt,
+           distance, distance_squared
+          )
+# Note: the ugliness above is because Python 2.5 does not support
+#  from .common import *

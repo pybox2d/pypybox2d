@@ -26,7 +26,7 @@ import wx.lib.newevent
 log = logging.getLogger( __name__ )
 import sys
 from squaremap import squaremap
-from runsnakerun import meliaeloader
+import meliaeloader
 
 RANKS = [
     (1024*1024*1024,'%0.1fGB'),

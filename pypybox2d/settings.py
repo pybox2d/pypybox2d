@@ -28,9 +28,15 @@ import sys
 import math
 
 PI = math.pi
-EPSILON = sys.float_info.epsilon
+try:
+    EPSILON = sys.float_info.epsilon
+    MAX_FLOAT = sys.float_info.max
+except: # Python 2.5
+    # NOTE: These could potentially be wrong, depending on your platform.
+    EPSILON = 2.2204460492503131e-16
+    MAX_FLOAT = 1.7976931348623157e+308
+
 EPSILON_SQR = EPSILON**2
-MAX_FLOAT = sys.float_info.max
 
 del math
 del sys

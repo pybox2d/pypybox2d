@@ -3,9 +3,10 @@ sys.path.append('..')
 
 import unittest
 import random
-import dynamictree
 from random import uniform as rand_float
-from common import *
+from pypybox2d import dynamictree
+from pypybox2d.common import *
+from copy import copy
 
 class Actor(object):
     pass
@@ -27,7 +28,7 @@ class random_test(unittest.TestCase):
         actor.overlap = False
         actor.fraction = 0.0
             
-        actor.proxy = self.tree.create_proxy(actor.aabb, actor)()
+        actor.proxy = self.tree.create_proxy(actor.aabb, actor)
         self.actors.append(actor)
         self.tree.validate()
         actor.proxy.dbg = len(self.actors)
@@ -62,7 +63,7 @@ class random_test(unittest.TestCase):
         c0 = 0.5 * (aabb.lower_bound + aabb.upper_bound)
         min_ = (-self.world_extent, 0.0)
         max_ = (self.world_extent, 2.0 * self.world_extent)
-        c = clamp(c0, min_, max_)
+        c = clamp_vector(c0, min_, max_)
         
         aabb.lower_bound += (c - c0)
         aabb.upper_bound += (c - c0)
@@ -71,7 +72,7 @@ class random_test(unittest.TestCase):
         actor=self.random_actor()
         if actor:
             #print('move', actor.proxy.dbg)
-            aabb0 = AABB(actor.aabb)
+            aabb0 = copy(actor.aabb)
             self.move_aabb(actor.aabb)
             displacement = actor.aabb.center - aabb0.center
 
@@ -140,7 +141,7 @@ class random_test(unittest.TestCase):
             actor.fraction = 1.0
             actor.overlap = False
 
-        action_count = max(1, len(self.actors) / 2)
+        action_count = max(1, len(self.actors) // 2)
         for i in range(action_count):
             self.random_action()
 

@@ -18,15 +18,16 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+from __future__ import absolute_import
+
+__all__ = ('TimeStep', 'World')
 __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import *
+from .common import (LockedError, Vec2, property)
 from .body import Body
-from .broadphase import BroadPhase
-from .contact import (Contact, ContactSolver)
 from .contact_manager import (Island, ContactManager)
 from . import joints
 from . import settings
@@ -38,6 +39,7 @@ MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR
 MAX_ROTATION = settings.MAX_ROTATION
 MAX_ROTATION_SQR = settings.MAX_ROTATION_SQR
 CONTACT_BAUMGARTE = settings.CONTACT_BAUMGARTE
+EPSILON = settings.EPSILON
 MAX_FLOAT = settings.MAX_FLOAT
 ANGULAR_SLEEP_TOLERANCE_SQR = settings.ANGULAR_SLEEP_TOLERANCE_SQR
 LINEAR_SLEEP_TOLERANCE_SQR = settings.LINEAR_SLEEP_TOLERANCE_SQR
