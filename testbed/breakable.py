@@ -52,16 +52,16 @@ class Breakable (Framework):
 
         self.world.contact_manager.post_solve = self.post_solve
 
-    def post_solve(self, contact, impulse): 
+    def post_solve(self, contact, impulses): 
+        # impulses is a list of tuples for each point: (normal_impulse, tangent_impulse)
         # Already broken?
         if self.broke:
             return 
         
         # If the impulse is enough to split the objects, then flag it to break
-        max_impulse=max(manifold_point.normal_impulse for manifold_point in contact.manifold.used_points)
-        print '%.1g' % max_impulse,
-        if max_impulse > 40:
-            print('break')
+        max_normal_impulse=max(impulse[0] for impulse in impulses) 
+        if max_normal_impulse > 40:
+            print('Break!')
             self._break=True
 
     def break_(self):

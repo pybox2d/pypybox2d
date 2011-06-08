@@ -1,12 +1,26 @@
 1. fix bugs
-2. speed up
-3. figure out a new name
-4. done
+2. profile, optimize
+3. possibly new C types, based on (2)
+4. figure out a new name
+5. done
+
+C module:
+ improve docstrings
+
+============C module============
+Vec2                       done
+Mat22                      done
+Transform                  done
+AABB                       done
+Mat33                      TODO, low priority
+Vec3                       TODO, low priority
+
+Python:
 
 ============testbed==============
 box_cutter                 buggy / not due to cutting, but due to shape destruction/creation, i think
-breakable                  buggy / impulses too low?
 tiles                      done, ok but incredibly slow -- expected
+breakable                  done
 distance                   done
 gears                      done
 collision_filtering        done

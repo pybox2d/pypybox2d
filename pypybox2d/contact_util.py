@@ -30,7 +30,7 @@ __date__ = "$Date$"
 
 import math
 from copy import copy
-from .common import (Vec2, distance_squared)
+from .common import (Mat22, Vec2, distance_squared)
 from .settings import (MAX_MANIFOLD_POINTS, EPSILON_SQR)
 
 def mix_friction(friction1, friction2):
@@ -262,23 +262,63 @@ class ContactConstraintPoint(object):
     __slots__ = ['local_point', 'ra', 'rb', 'normal_impulse', 'tangent_impulse', 'normal_mass', 'tangent_mass', 'velocity_bias']
 
     def __init__(self):
-        pass
+        self.ra = Vec2()
+        self.rb = Vec2()
+        self.normal_mass = 0.0
+        self.tangent_mass = 0.0
+        self.velocity_bias = 0.0
         #self.local_point = local_point
-        #self.ra = ra
-        #self.rb = rb
         #self.normal_impulse = normal_impulse
         #self.tangent_impulse = tangent_impulse
-        #self.normal_mass = normal_mass
-        #self.tangent_mass = tangent_mass
-        #self.velocity_bias = velocity_bias
+
+    def __repr__(self):
+        return 'ContactConstraintPoint(ra=%s, rb=%s, normal_mass=%g, tangent_mass=%g, velocity_bias=%g, local_point=%s, normal_impulse=%g, tangent_impulse=%g)' % \
+            (self.ra, self.rb, self.normal_mass, self.tangent_mass, self.velocity_bias,
+            self.local_point, self.normal_impulse, self.tangent_impulse)
 
 class ContactConstraint(object):
     __slots__ = ['local_normal', 'local_point', 'normal', 'normal_mass', 'K', 'body_a', 
                     'body_b', 'type', 'radius_a', 'radius_b', 'friction', 'restitution', 
                     'point_count', 'manifold', 'points']
 
-    def __init__(self, point_count):
-        self.point_count = point_count
-        self.points = [ContactConstraintPoint() for i in range(point_count)]
+    def __init__(self, contact, impulse_ratio=1.0, warm_starting=True):
+        manifold = contact._manifold
+        assert(manifold.point_count > 0)
 
+        fixture_a = contact._fixture_a
+        fixture_b = contact._fixture_b
 
+        shape_a = fixture_a._shape
+        shape_b = fixture_b._shape
+
+        self.radius_a = shape_a.radius
+        self.radius_b = shape_b.radius
+        
+        self.body_a = fixture_a._body
+        self.body_b = fixture_b._body
+
+        self.point_count = manifold.point_count
+        self.points = [ContactConstraintPoint() for i in range(manifold.point_count)]
+        self.K = Mat22()
+        self.normal_mass = Vec2()
+
+        self.manifold = manifold
+        self.normal = Vec2()
+
+        self.local_normal = copy(manifold.local_normal)
+        self.local_point = copy(manifold.local_point)
+
+        self.friction = contact._friction
+        self.restitution = contact._restitution
+
+        self.type = manifold.type
+
+        for mp, ccp in zip(manifold.used_points, self.points):
+            if warm_starting:
+                ccp.normal_impulse = impulse_ratio * mp.normal_impulse
+                ccp.tangent_impulse = impulse_ratio * mp.tangent_impulse
+            else:
+                ccp.normal_impulse = 0.0
+                ccp.tangent_impulse = 0.0
+            
+            ccp.local_point = copy(mp.local_point)

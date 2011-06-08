@@ -177,7 +177,7 @@ class Contact(object):
 
     def reset_friction(self):
         """ Reset the friction mixture to the default value."""
-        raise mix_friction(self._fixture_a._friction, self._fixture_b._friction)
+        return mix_friction(self._fixture_a._friction, self._fixture_b._friction)
 
     @property
     def restitution(self):
@@ -195,7 +195,7 @@ class Contact(object):
 
     def reset_restitution(self):
         """ Reset the restitution mixture to the default value."""
-        raise mix_restitution(self._fixture_a._restitution, self._fixture_b._restitution)
+        return mix_restitution(self._fixture_a._restitution, self._fixture_b._restitution)
 
     def evaluate(self, manifold, xf_a, xf_b):
         """ Evaluate this contact with your own manifold and transforms."""
@@ -371,61 +371,9 @@ class Contact(object):
 
 class ContactSolver(object):
     def __init__(self, contacts, impulse_ratio, warm_starting):
-        self.count = len(contacts)
-        self.constraints = []
-        
         # Initialize position independent portions of the constraints.
-        for contact in contacts:
-            fixture_a = contact._fixture_a
-            fixture_b = contact._fixture_b
-
-            shape_a = fixture_a._shape
-            shape_b = fixture_b._shape
-
-            radius_a = shape_a.radius
-            radius_b = shape_b.radius
-            
-            body_a = fixture_a._body
-            body_b = fixture_b._body
-
-            manifold = contact._manifold
-
-            assert(manifold.point_count > 0)
-
-            constraint = ContactConstraint(manifold.point_count)
-            self.constraints.append(constraint)
-
-            constraint.friction = contact._friction
-            constraint.restitution = contact._restitution
-            constraint.body_a = body_a
-            constraint.body_b = body_b
-
-            constraint.manifold = manifold
-            constraint.normal = Vec2()
-
-            constraint.local_normal = copy(manifold.local_normal)
-            constraint.local_point = copy(manifold.local_point)
-            constraint.radius_a = radius_a
-            constraint.radius_b = radius_b
-            constraint.type = manifold.type
-
-            for mp, ccp in zip(manifold.used_points, constraint.points):
-                if warm_starting:
-                    ccp.normal_impulse = impulse_ratio * mp.normal_impulse
-                    ccp.tangent_impulse = impulse_ratio * mp.tangent_impulse
-                else:
-                    ccp.normal_impulse = 0.0
-                    ccp.tangent_impulse = 0.0
-                
-                ccp.local_point = copy(mp.local_point)
-                ccp.ra = Vec2()
-                ccp.rb = Vec2()
-                ccp.normal_mass = 0.0
-                ccp.tangent_mass = 0.0
-                ccp.velocity_bias = 0.0
-            
-            constraint.K = Mat22()
-            constraint.normal_mass = Vec2()
+        self.constraints = [ContactConstraint(c, impulse_ratio, warm_starting)
+                                for c in contacts]
 
     def initialize_velocity_constraints(self):
         for cc in self.constraints:
@@ -508,12 +456,9 @@ class ContactSolver(object):
     def warm_start(self):
         """Warm start"""
         for c in self.constraints:
-            body_a = c.body_a
-            body_b = c.body_b
-            inv_mass_a = body_a._inv_mass
-            inv_mass_b = body_b._inv_mass
-            inv_I_a = body_a._invI
-            inv_I_b = body_b._invI
+            body_a, body_b = c.body_a, c.body_b
+            inv_mass_a, inv_mass_b = body_a._inv_mass, body_b._inv_mass
+            inv_I_a, inv_I_b = body_a._invI, body_b._invI
             normal = c.normal
             tangent = normal.cross(1.0)
 
@@ -527,16 +472,13 @@ class ContactSolver(object):
 
     def solve_velocity_constraints(self):
         for c in self.constraints:
-            body_a = c.body_a
-            body_b = c.body_b
+            body_a, body_b = c.body_a, c.body_b
+            inv_mass_a, inv_mass_b = body_a._inv_mass, body_b._inv_mass
+            inv_I_a, inv_I_b = body_a._invI, body_b._invI
             va = body_a._linear_velocity # note that we modify these in place
             vb = body_b._linear_velocity # note that we modify these in place
             wa = body_a._angular_velocity
             wb = body_b._angular_velocity
-            inv_mass_a = body_a._inv_mass
-            inv_mass_b = body_b._inv_mass
-            inv_I_a = body_a._invI
-            inv_I_b = body_b._invI
             normal = c.normal
             tangent = normal.cross(1.0)
             friction = c.friction
@@ -572,7 +514,6 @@ class ContactSolver(object):
             # Solve normal constraints
             if c.point_count == 1:
                 ccp = c.points[0]
-
                 # Relative velocity at contact
                 dv = vb + scalar_cross(wb, ccp.rb) - va - scalar_cross(wa, ccp.ra)
 
@@ -593,35 +534,33 @@ class ContactSolver(object):
                 wb += inv_I_b * ccp.rb.cross(P)
                 ccp.normal_impulse = new_impulse
             else:
-                """
-                 Block solver developed in collaboration with Dirk Gregorius (back in 01/07 on Box2_d__lite).
-                 Build the mini L_c_p for this contact patch
-                
-                 vn = A * x + b, vn >= 0, , vn >= 0, x >= 0 and vn_i * x_i = 0 with i = 1..2
-                
-                 A = J * W * J_t and J = ( -n, -r1 x n, n, r2 x n )
-                 b = vn_0 - velocity_bias
-                
-                 The system is solved using the "Total enumeration method" (s. Murty). The complementary constraint vn_i * x_i
-                 implies that we must have in any solution either vn_i = 0 or x_i = 0. So for the 2_d contact problem the cases
-                 vn1 = 0 and vn2 = 0, x1 = 0 and x2 = 0, x1 = 0 and vn2 = 0, x2 = 0 and vn1 = 0 need to be tested. The first valid
-                 solution that satisfies the problem is chosen.
-                 
-                 In order to account of the accumulated impulse 'a' (because of the iterative nature of the solver which only requires
-                 that the accumulated impulse is clamped and not the incremental impulse) we change the impulse variable (x_i).
-                
-                 Substitute:
-                 
-                 x = x' - a
-                 
-                 Plug into above equation:
-                
-                 vn = A * x + b
-                    = A * (x' - a) + b
-                    = A * x' + b - A * a
-                    = A * x' + b'
-                 b' = b - A * a
-                """
+# Block solver developed in collaboration with Dirk Gregorius (back in 01/07 on Box2D lite).
+# Build the mini LCP for this contact patch
+#
+# vn = A * x + b, vn >= 0, , vn >= 0, x >= 0 and vn_i * x_i = 0 with i = 1..2
+#
+# A = J * W * J_t and J = ( -n, -r1 x n, n, r2 x n )
+# b = vn_0 - velocity_bias
+#
+# The system is solved using the "Total enumeration method" (s. Murty). The complementary constraint vn_i * x_i
+# implies that we must have in any solution either vn_i = 0 or x_i = 0. So for the 2_d contact problem the cases
+# vn1 = 0 and vn2 = 0, x1 = 0 and x2 = 0, x1 = 0 and vn2 = 0, x2 = 0 and vn1 = 0 need to be tested. The first valid
+# solution that satisfies the problem is chosen.
+# 
+# In order to account of the accumulated impulse 'a' (because of the iterative nature of the solver which only requires
+# that the accumulated impulse is clamped and not the incremental impulse) we change the impulse variable (x_i).
+#
+# Substitute:
+# 
+# x = x' - a
+# 
+# Plug into above equation:
+#
+# vn = A * x + b
+#    = A * (x' - a) + b
+#    = A * x' + b - A * a
+#    = A * x' + b'
+# b' = b - A * a
 
                 cp1 = c.points[0]
                 cp2 = c.points[1]
