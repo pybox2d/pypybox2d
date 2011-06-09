@@ -11,6 +11,8 @@
 #define IS_PY3K
 #endif
 
+#define TYPE_NAME(name) ("pypybox2d.common." name)
+
 typedef struct {
     PyObject_HEAD
     double x;

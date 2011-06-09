@@ -100,13 +100,6 @@ Vec2_valid(Vec2 *self, void *closure)
 
 /* end getters/setters */
 
-/* returns owned tuple (x, y) */
-static PyObject *
-Vec2_tuple(Vec2 *self)
-{
-    return Py_BuildValue("(ff)", self->x, self->y);
-}
-
 /* returns owned string formatted: Vec2(x, y) */
 static PyObject *
 Vec2_repr(Vec2 *self)
@@ -261,6 +254,20 @@ static PyObject *
 Vec2_copy(Vec2 *self)
 {
     return new_Vec2(self->x, self->y);
+}
+
+/* returns owned tuple (x, y) */
+static PyObject *
+Vec2_tuple(Vec2 *self)
+{
+    return Py_BuildValue("(ff)", self->x, self->y);
+}
+
+static PyObject *
+Vec2_reduce(Vec2 *self)
+{
+    Py_INCREF(Py_None);
+    return PyTuple_Pack(3, Py_TYPE(self), Vec2_tuple(self), Py_None);
 }
 
 static PyObject *
@@ -527,6 +534,9 @@ module_max_vector(PyObject *none, PyObject *args)
 
 
 static PyMethodDef Vec2_methods[] = {
+    {"__reduce__", (PyCFunction)Vec2_reduce, METH_NOARGS,
+     "Ready the object for pickling"
+    },
     {"__copy__", (PyCFunction)Vec2_copy, METH_NOARGS,
      "Copy the vector"
     },
@@ -627,7 +637,7 @@ static PyNumberMethods Vec2_as_number = {
 
 PyTypeObject Vec2Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "common.Vec2",             /*tp_name*/
+    TYPE_NAME("Vec2"),         /*tp_name*/
     sizeof(Vec2),              /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)Vec2_dealloc,  /*tp_dealloc*/

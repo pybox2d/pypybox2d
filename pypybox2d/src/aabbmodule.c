@@ -422,6 +422,20 @@ static PySequenceMethods AABB_as_sequence = {
 /*** End sequence stuff ***/
 
 /*** Methods ***/
+PyObject *
+AABB_tuple(AABB *self) {
+    return Py_BuildValue("((ff)(ff))", 
+                               self->lower_bound->x, self->lower_bound->y,
+                               self->upper_bound->x, self->upper_bound->y);
+}
+
+static PyObject *
+AABB_reduce(AABB *self)
+{
+    Py_INCREF(Py_None);
+    return PyTuple_Pack(3, Py_TYPE(self), AABB_tuple(self), Py_None);
+}
+
 static PyObject *
 AABB_copy(AABB *self)
 {
@@ -429,6 +443,9 @@ AABB_copy(AABB *self)
 }
 
 static PyMethodDef AABB_methods[] = {
+    {"__reduce__", (PyCFunction)AABB_reduce, METH_NOARGS,
+     "Ready the object for pickling"
+    },
     {"__copy__", (PyCFunction)AABB_copy, METH_NOARGS,
      "Copy the AABB"
     },
@@ -539,7 +556,7 @@ static PyNumberMethods AABB_as_number = {
 
 PyTypeObject AABBType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "common.AABB",                                           /*tp_name*/
+    TYPE_NAME("AABB"),                                       /*tp_name*/
     sizeof(AABB),                                            /*tp_basicsize*/
     0,                                                       /*tp_itemsize*/
     (destructor)AABB_dealloc,                                /*tp_dealloc*/

@@ -441,8 +441,12 @@ class PyMat22(object):
     2x2 matrix, stored in column-major order.
     """
     __slots__=['_col1', '_col2']
-    def __init__(self, col1=(1, 0), col2=(0, 1)):
-        self._col1, self._col2=Vec2(*col1), Vec2(*col2)
+    def __init__(self, col1=(1, 0), col2=(0, 1), angle=None):
+        if angle is not None:
+            self._col1, self._col2=Vec2(), Vec2()
+            self.angle = angle
+        else:
+            self._col1, self._col2=Vec2(*col1), Vec2(*col2)
 
     def __str__(self):
         return \
@@ -465,6 +469,12 @@ class PyMat22(object):
     @col2.setter
     def col2(self, value):
         self._col2 = Vec2(*value)
+
+    def __getstate__(self):
+        return [(self.col1.x, self.col1.y), (self.col2.x, self.col2.y)]
+    def __setstate__(self, value):
+        self.col1 = Vec2(*value[0])
+        self.col2 = Vec2(*value[1])
 
     def __copy__(self):
         return Mat22(self._col1, self._col2)
@@ -787,6 +797,11 @@ class PyTransform(object):
     def rotation(self, rotation):
         self._rotation = Vec2(*rotation)
 
+    def __getstate__(self):
+        return [self.position, self.rotation]
+    def __setstate__(self, value):
+        self._position, self._rotation = value
+
     def __copy__(self):
         return Transform(self._position, self._rotation)
     copy = __copy__
@@ -861,6 +876,11 @@ class PyAABB(object):
     @lower_bound.setter
     def lower_bound(self, value):
         self._lower_bound.set(*value)
+
+    def __getstate__(self):
+        return [self._lower_bound, self._upper_bound]
+    def __setstate__(self, value):
+        self._lower_bound, self._upper_bound = value
 
     @property
     def upper_bound(self):

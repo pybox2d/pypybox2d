@@ -216,6 +216,21 @@ Transform_richcompare(PyObject *_self, PyObject *_other, int op)
 
 
 /*** Methods ***/
+PyObject *
+Transform_tuple(Transform *self) {
+    return Py_BuildValue("(ff)((ff)(ff))", 
+                               self->position->x, self->position->y,
+                               self->rotation->col1->x, self->rotation->col1->y,
+                               self->rotation->col2->x, self->rotation->col2->y);
+}
+
+static PyObject *
+Transform_reduce(Transform *self)
+{
+    Py_INCREF(Py_None);
+    return PyTuple_Pack(3, Py_TYPE(self), Transform_tuple(self), Py_None);
+}
+
 static PyObject *
 Transform_set_identity(Transform *self, Transform* other)
 {
@@ -233,6 +248,9 @@ Transform_set_identity(Transform *self, Transform* other)
 }
 
 static PyMethodDef Transform_methods[] = {
+    {"__reduce__", (PyCFunction)Transform_reduce, METH_NOARGS,
+     "Ready the object for pickling"
+    },
     {"__copy__", (PyCFunction)Transform_copy, METH_NOARGS,
      "Copy the transform"
     },
@@ -325,7 +343,7 @@ static PyNumberMethods Transform_as_number = {
 
 PyTypeObject TransformType = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "common.Transform",                                             /*tp_name*/
+    TYPE_NAME("Transform"),                                         /*tp_name*/
     sizeof(Transform),                                              /*tp_basicsize*/
     0,                                                              /*tp_itemsize*/
     (destructor)Transform_dealloc,                                  /*tp_dealloc*/

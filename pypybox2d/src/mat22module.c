@@ -49,11 +49,11 @@ Mat22_dealloc(Mat22* self)
 static int
 Mat22_init(Mat22 *self, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"col1", "col2", NULL};
-    PyObject *col1=NULL, *col2=NULL;
-    double cx, cy;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, 
-                                      &col1, &col2))
+    static char *kwlist[] = {"col1", "col2", "angle", NULL};
+    PyObject *col1=NULL, *col2=NULL, *angle=NULL;
+    double cx, cy, a, c, s;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OOO", kwlist, 
+                                      &col1, &col2, &angle))
         return -1; 
 
     if (col1 && col1 != Py_None) {
@@ -66,6 +66,14 @@ Mat22_init(Mat22 *self, PyObject *args, PyObject *kwds)
         VEC2_OR_SEQUENCE(col2, cx, cy, -1)
         self->col2->x = cx;
         self->col2->y = cy;
+    }
+
+    if (angle && angle != Py_None) {
+        CONVERT_TO_DOUBLE(angle, a, -1)
+        c=cos(a);
+        s=sin(a);
+        self->col1->x=c; self->col2->x=-s;
+        self->col1->y=s; self->col2->y=c;
     }
     return 0;
 }
@@ -270,6 +278,20 @@ Mat22_neg(Mat22 *self)
 {
     return new_Mat22(-self->col1->x, -self->col2->x,
                      -self->col1->y, -self->col2->y);
+}
+
+PyObject *
+Mat22_tuple(Mat22 *self) {
+    return Py_BuildValue("((ff)(ff))", 
+                               self->col1->x, self->col1->y,
+                               self->col2->x, self->col2->y);
+}
+
+PyObject *
+Mat22_reduce(Mat22 *self)
+{
+    Py_INCREF(Py_None);
+    return PyTuple_Pack(3, Py_TYPE(self), Mat22_tuple(self), Py_None);
 }
 
 PyObject *
@@ -495,6 +517,9 @@ Mat22_solve(Mat22 *self, PyObject* other)
 }
 
 static PyMethodDef Mat22_methods[] = {
+    {"__reduce__", (PyCFunction)Mat22_reduce, METH_NOARGS,
+     "Ready the object for pickling"
+    },
     {"__copy__", (PyCFunction)Mat22_copy, METH_NOARGS,
      "Copy the matrix"
     },
@@ -602,7 +627,7 @@ static PyNumberMethods Mat22_as_number = {
 
 PyTypeObject Mat22Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "common.Mat22",                        /* tp_name*/
+    TYPE_NAME("Mat22"),                    /* tp_name*/
     sizeof(Mat22),                         /* tp_basicsize*/
     0,                                     /* tp_itemsize*/
     (destructor)Mat22_dealloc,             /* tp_dealloc*/
