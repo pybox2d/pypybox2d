@@ -99,30 +99,23 @@ class ManifoldPoint(object):
         return self.id[3]
 
 class ClipVertex(object):
-    """Used for computing contact manifolds."""
-    __slots__=['v', 'id']
+    """
+    Used for computing contact manifolds.
+    """
+    __slots__=['v', 'index_a', 'index_b', 'type_a', 'type_b']
     def __init__(self, vertex, index_a, index_b, type_a, type_b):
-        self.v = vertex
-        self.id = (index_a, index_b, type_a, type_b)
+        self.v = Vec2(*vertex)
+        self.index_a = index_a
+        self.index_b = index_b
+        self.type_a = type_a
+        self.type_b = type_b
    
     def __copy__(self):
         return ClipVertex(self.v, self.index_a, self.index_b, self.type_a, self.type_b)
 
     @property
-    def index_a(self):
-        return self.id[0]
-
-    @property
-    def index_b(self):
-        return self.id[1]
-
-    @property
-    def type_a(self):
-        return self.id[2]
-
-    @property
-    def type_b(self):
-        return self.id[3]
+    def id(self):
+        return (self.index_a, self.index_b, self.type_a, self.type_b)
 
 class Manifold(object):
     """

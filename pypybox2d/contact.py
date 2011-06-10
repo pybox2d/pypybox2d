@@ -241,15 +241,15 @@ class Contact(object):
 
             # Match old contact ids to new contact ids and copy the
             # stored impulses to warm start the solver.
+            old_impulses = dict((mp.id, (mp.normal_impulse, mp.tangent_impulse))
+                                    for mp in old_manifold.used_points)
             for mp2 in self._manifold.used_points:
-                mp2.normal_impulse = 0.0
-                mp2.tangent_impulse = 0.0
                 id2 = mp2.id
-                for mp1 in old_manifold.used_points:
-                    if mp1.id == id2:
-                        mp2.normal_impulse = mp1.normal_impulse
-                        mp2.tangent_impulse = mp1.tangent_impulse
-                        break
+                if id2 in old_impulses:
+                    mp2.normal_impulse, mp2.tangent_impulse = old_impulses[id2]
+                else:
+                    mp2.normal_impulse = 0.0
+                    mp2.tangent_impulse = 0.0
 
             if touching != was_touching:
                 body_a.awake = True

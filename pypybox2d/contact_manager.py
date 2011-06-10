@@ -311,15 +311,15 @@ class ContactManager(object):
             fixture_a = proxy_a.fixture
             fixture_b = proxy_b.fixture
 
-            index_a = proxy_a.child_index
-            index_b = proxy_b.child_index
-
             body_a = fixture_a._body
             body_b = fixture_b._body
 
             # If the fixtures are on the same body, ignore it
             if body_a == body_b:
                 continue
+
+            index_a = proxy_a.child_index
+            index_b = proxy_b.child_index
 
             # Does a contact already exist?
             for contact in body_b._contacts:

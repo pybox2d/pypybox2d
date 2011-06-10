@@ -158,7 +158,7 @@ class Body(object):
                 self._type,
                 self._active,
                 self._gravity_scale,
-                self.user_data,
+                repr(self.user_data),
                 self.fixtures)
         return """Body(position=%s, angle=%g, linear_velocity=%s, angular_velocity=%g, 
 linear_damping=%s, angular_damping=%g, allow_sleep=%s, awake=%s,
@@ -168,7 +168,7 @@ fixtures=%s)""" % info
 
     def create_fixture(self, shape, friction=0.2, restitution=0.0, density=0.0, 
                         category_bits=0x0001, mask_bits=0xFFFF, group_index=0, 
-                        sensor=False):
+                        sensor=False, user_data=None):
         """
         Creates a fixture and attach it to this body. Use this function if you need
         to set some fixture parameters, like friction. Otherwise you can create the
@@ -182,7 +182,7 @@ fixtures=%s)""" % info
             raise LockedError
 
         fixture=Fixture(shape, friction, restitution, density, category_bits, 
-                         mask_bits, group_index, sensor, body=self)
+                         mask_bits, group_index, sensor, user_data, body=self)
 
         self.attach_fixture(fixture)
         return fixture
@@ -219,24 +219,29 @@ fixtures=%s)""" % info
             self._world._new_fixture=True
 
     def create_circle_fixture(self, radius=0.2, position=(0,0), **kwargs):
+        """TODO"""
         shape = shapes.Circle(radius, position)
         return self.create_fixture(shape, **kwargs)
 
     def create_polygon_fixture(self, vertices=None, box=None, **kwargs):
+        """TODO"""
         shape = shapes.Polygon(vertices, box)
         return self.create_fixture(shape, **kwargs)
 
     def create_edge_fixture(self, v1=None, v2=None, v0=None, v3=None, **kwargs):
+        """TODO"""
         shape = shapes.Edge(v1, v2, v0, v3)
         return self.create_fixture(shape, **kwargs)
 
     def create_loop_fixture(self, vertices, *args, **kwargs):
+        """TODO"""
         shape = shapes.Loop(vertices, *args)
         return self.create_fixture(shape, **kwargs)
 
     def create_fixtures(self, shape_list, fixture=None, friction=0.2, restitution=0.0, 
                         density=0.0, category_bits=0x0001, mask_bits=0xFFFF,
                         group_index=0, sensor=False):
+        """TODO"""
 
         if isinstance(shape_list, shapes.Shape):
             shape_list = [shape_list]

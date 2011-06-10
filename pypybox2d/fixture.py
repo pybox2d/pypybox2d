@@ -26,7 +26,7 @@ __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import (EmptyFixtureError, is_valid_float, property)
+from .common import (AABB, EmptyFixtureError, is_valid_float, property)
 
 class FixtureProxy(object):
     __slots__=['aabb', 'fixture', 'child_index', 'proxy_ref', '__weakref__']
@@ -54,7 +54,7 @@ class Fixture(object):
     # TODO slots for debugging only
     def __init__(self, shape=None, friction=0.2, restitution=0.0, density=0.0, 
                     category_bits=0x0001, mask_bits=0xFFFF, group_index=0,
-                    sensor=False, body=None):
+                    sensor=False, user_data=None, body=None):
         self._friction = friction
         self._restitution = restitution
         self._density = density
@@ -65,6 +65,7 @@ class Fixture(object):
         self._mask_bits = mask_bits
         self._group_index = group_index
         self._shape = copy(shape)
+        self.user_data = user_data
         self._attach_to_body(body)
 
     def _attach_to_body(self, body):
@@ -80,11 +81,12 @@ class Fixture(object):
                         category_bits=self._category_bits,
                         mask_bits=self._mask_bits,
                         group_index=self._group_index,
-                        sensor=self._sensor)
+                        sensor=self._sensor,
+                        user_data=self.user_data)
     
     def __repr__(self):
-        return 'Fixture(shape=%s, friction=%g, restitution=%g, density=%g, category_bits=%x, mask_bits=%x, group_index=%x, sensor=%s)' % \
-                (self.shape, self.friction, self.restitution, self.density, self.category_bits, self.mask_bits, self.group_index, self.sensor)
+        return 'Fixture(shape=%s, friction=%g, restitution=%g, density=%g, category_bits=0x%x, mask_bits=0x%x, group_index=%d, sensor=%s, user_data=%s)' % \
+                (self.shape, self.friction, self.restitution, self.density, self.category_bits, self.mask_bits, self.group_index, self.sensor, repr(self.user_data))
 
     #--- start properties---
     @property
@@ -247,9 +249,11 @@ class Fixture(object):
         assert(len(self._proxies)==0)
 
         self._proxies=[]
+        temp_aabb = AABB()
         for i in range(self._shape.child_count):
-            aabb = self._shape.compute_aabb(xf, i)
-            proxy = FixtureProxy(self, aabb, i)
+            aabb = self._shape.compute_aabb(xf, i, temp_aabb)
+            # temp_aabb is copied for each fixture proxy
+            proxy = FixtureProxy(self, temp_aabb, i)
 
             proxy.proxy_ref = broadphase.create_proxy(proxy.aabb, proxy)
             self._proxies.append(proxy)
@@ -279,10 +283,12 @@ class Fixture(object):
             broadphase.touch_proxy(proxy.proxy_ref)
 
     def _synchronize(self, broadphase, xf1, xf2):
+        aabb1 = AABB()
+        aabb2 = AABB()
         for proxy in self._proxies:
             # Compute an AABB that covers the swept shape (may miss some rotation effect).
-            aabb1 = self._shape.compute_aabb(xf1, proxy.child_index)
-            aabb2 = self._shape.compute_aabb(xf2, proxy.child_index)
+            self._shape.compute_aabb(xf1, proxy.child_index, aabb1)
+            self._shape.compute_aabb(xf2, proxy.child_index, aabb2)
 
             proxy.aabb.combine_two(aabb1, aabb2)
             displacement = xf2._position - xf1._position

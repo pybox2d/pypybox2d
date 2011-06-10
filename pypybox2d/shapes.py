@@ -165,9 +165,11 @@ class Circle(Shape):
             aabb=use_instance
         else:
             aabb=AABB()
+
         p = xf._position + xf._rotation*self.position
-        aabb.lower_bound = Vec2(p.x - self.radius, p.y - self.radius)
-        aabb.upper_bound = Vec2(p.x + self.radius, p.y + self.radius)
+        rad = (self.radius, self.radius)
+        aabb.lower_bound = p - rad
+        aabb.upper_bound = p + rad
         return aabb
 
     def compute_mass(self, density, use_instance=None):
@@ -564,6 +566,11 @@ class Edge(Shape):
 
     def compute_aabb(self, xf, child_index, use_instance=None):
         """See Shape.compute_aabb"""
+        if use_instance:
+            aabb=use_instance
+        else:
+            aabb=AABB()
+
         v1 = xf * self._vertex1
         v2 = xf * self._vertex2
 
@@ -571,7 +578,9 @@ class Edge(Shape):
         upper = max_vector(v1, v2)
 
         r = (self.radius, self.radius)
-        return AABB(lower - r, upper + r)
+        aabb.lower_bound = lower - r
+        aabb.upper_bound = upper + r
+        return aabb
 
     def compute_mass(self, density, use_instance=None):
         return MassData(mass=0.0, 
@@ -648,13 +657,20 @@ class Loop(Shape):
 
     def compute_aabb(self, xf, child_index, use_instance=None):
         """See Shape.compute_aabb"""
+        if use_instance:
+            aabb=use_instance
+        else:
+            aabb=AABB()
+
         i1 = child_index
         i2 = (child_index + 1) % len(self._vertices)
 
         v1 = xf * self._vertices[i1]
         v2 = xf * self._vertices[i2]
 
-        return AABB(min_vector(v1, v2), max_vector(v1, v2))
+        aabb.lower_bound = min_vector(v1, v2)
+        aabb.upper_bound = max_vector(v1, v2)
+        return aabb
 
     def compute_mass(self, density, use_instance=None):
         """Chains have zero mass."""
