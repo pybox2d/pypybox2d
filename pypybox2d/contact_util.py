@@ -251,67 +251,112 @@ class ContactRegister(object):
         self.evaluate_fcn = None
         self.primary = None
 
-class ContactConstraintPoint(object):
-    __slots__ = ['local_point', 'ra', 'rb', 'normal_impulse', 'tangent_impulse', 'normal_mass', 'tangent_mass', 'velocity_bias']
+class VelocityConstraintPoint(object):
+    __slots__ = ['r', 'normal_impulse', 'tangent_impulse', 'normal_mass', 'tangent_mass', 'velocity_bias']
 
-    def __init__(self):
-        self.ra = Vec2()
-        self.rb = Vec2()
-        self.normal_mass = 0.0
-        self.tangent_mass = 0.0
-        self.velocity_bias = 0.0
-        #self.local_point = local_point
-        #self.normal_impulse = normal_impulse
-        #self.tangent_impulse = tangent_impulse
+    def __init__(self, step=None, normal_impulse=0.0, tangent_impulse=0.0,
+                 ra=(0,0), rb=(0,0), normal_mass=0.0, tangent_mass=0.0, 
+                 velocity_bias=0.0):
+
+        if step is not None and step.warm_starting:
+            self.normal_impulse = step.dt_ratio * normal_impulse
+            self.tangent_impulse = step.dt_ratio * tangent_impulse
+        else:
+            self.normal_impulse = normal_impulse
+            self.tangent_impulse = tangent_impulse
+
+        self.r = (Vec2(*ra), Vec2(*rb))
+        self.normal_mass = normal_mass
+        self.tangent_mass = tangent_mass
+        self.velocity_bias = velocity_bias
 
     def __repr__(self):
-        return 'ContactConstraintPoint(ra=%s, rb=%s, normal_mass=%g, tangent_mass=%g, velocity_bias=%g, local_point=%s, normal_impulse=%g, tangent_impulse=%g)' % \
-            (self.ra, self.rb, self.normal_mass, self.tangent_mass, self.velocity_bias,
-            self.local_point, self.normal_impulse, self.tangent_impulse)
+        return 'VelocityConstraintPoint(r=%s, normal_impulse=%g, tangent_impulse=%g, normal_mass=%g, tangent_mass=%g, velocity_bias=%g)' % \
+            (self.r,
+            self.normal_impulse, self.tangent_impulse, 
+            self.normal_mass, self.tangent_mass, 
+            self.velocity_bias, )
 
-class ContactConstraint(object):
-    __slots__ = ['local_normal', 'local_point', 'normal', 'normal_mass', 'K', 'body_a', 
-                    'body_b', 'type', 'radius_a', 'radius_b', 'friction', 'restitution', 
-                    'point_count', 'manifold', 'points']
+class ContactVelocityConstraint(object):
+    __slots__ = ['points', 'normal', 'normal_mass', 'K', 'indices',
+                 'inv_mass', 'inv_i', 'friction', 'restitution', 'contact',
+                 'manifold']
 
-    def __init__(self, contact, impulse_ratio=1.0, warm_starting=True):
-        manifold = contact._manifold
-        assert(manifold.point_count > 0)
-
-        fixture_a = contact._fixture_a
-        fixture_b = contact._fixture_b
-
-        shape_a = fixture_a._shape
-        shape_b = fixture_b._shape
-
-        self.radius_a = shape_a.radius
-        self.radius_b = shape_b.radius
-        
-        self.body_a = fixture_a._body
-        self.body_b = fixture_b._body
-
-        self.point_count = manifold.point_count
-        self.points = [ContactConstraintPoint() for i in range(manifold.point_count)]
-        self.K = Mat22()
-        self.normal_mass = Vec2()
-
-        self.manifold = manifold
-        self.normal = Vec2()
-
-        self.local_normal = copy(manifold.local_normal)
-        self.local_point = copy(manifold.local_point)
-
+    def __init__(self, contact, body_a, body_b, K=None, normal_mass=None):
+        self.manifold = contact.manifold
+        self.contact = contact
         self.friction = contact._friction
         self.restitution = contact._restitution
 
+        self.indices = (body_a._island_index, body_b._island_index)
+        self.inv_mass = (body_a._inv_mass, body_b._inv_mass)
+        self.inv_i = (body_a._invI, body_b._invI)
+
+        if normal_mass is not None:
+            self.normal_mass = Mat22(*normal_mass)
+        else:
+            self.normal_mass = Mat22()
+
+        if K is not None:
+            self.K = Mat22(*K)
+        else:
+            self.K = Mat22()
+
+class ContactPositionConstraint(object):
+    __slots__ = ['local_points', 'local_normal', 'local_point',
+                'indices', 'inv_mass', 
+                'local_centers', 'inv_i',
+                'type', 'radii']
+
+    def __init__(self, body_a, body_b, radius_a, radius_b, manifold):
+        self.indices = (body_a._island_index, body_b._island_index)
+        self.inv_mass = (body_a._inv_mass, body_b._inv_mass)
+        self.local_centers = (body_a._sweep.local_center, body_b._sweep.local_center)
+        self.inv_i = (body_a._invI, body_b._invI)
+
+        self.radii = (radius_a, radius_b)
+        self.local_normal = Vec2(*manifold.local_normal)
+        self.local_point = Vec2(*manifold.local_point)
         self.type = manifold.type
 
-        for mp, ccp in zip(manifold.used_points, self.points):
-            if warm_starting:
-                ccp.normal_impulse = impulse_ratio * mp.normal_impulse
-                ccp.tangent_impulse = impulse_ratio * mp.tangent_impulse
-            else:
-                ccp.normal_impulse = 0.0
-                ccp.tangent_impulse = 0.0
-            
-            ccp.local_point = copy(mp.local_point)
+        self.local_points = []
+
+    def solver_manifold(self, xf_a, xf_b, index):
+        """
+        Constraint cc, ContactConstraintPoint ccp
+        returns: normal, point, separation
+        """
+        type_ = self.type
+        radius_a, radius_b = self.radii
+        if type_ == Manifold.CIRCLES:
+            point_a = xf_a * self.local_point
+            point_b = xf_b * self.local_points[0]
+            normal = point_b - point_a
+            normal.normalize()
+
+            point = 0.5 * (point_a + point_b)
+            separation = (point_b - point_a).dot(normal) - radius_a - radius_b
+
+        elif type_ == Manifold.FACE_A:
+            normal = xf_a.rotation * self.local_normal
+            plane_point = xf_a * self.local_point
+
+            clip_point = xf_b * self.local_points[index]
+            separation = (clip_point - plane_point).dot(normal) - radius_a - radius_b
+            point = clip_point
+
+        elif type_ == Manifold.FACE_B:
+            normal = xf_b.rotation * self.local_normal
+            plane_point = xf_b * self.local_point
+
+            clip_point = xf_a * self.local_points[index]
+            separation = (clip_point - plane_point).dot(normal) - radius_a - radius_b
+            point = clip_point
+
+            # Ensure normal points from A to B
+            normal = -normal
+
+        else:
+            assert(False)
+
+        return normal, point, separation

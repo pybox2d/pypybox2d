@@ -26,7 +26,7 @@ __date__ = "$Date$"
 # $Source$
 
 from copy import copy
-from .common import (clamp, property)
+from .common import (clamp, Vec2, property)
 from .broadphase import BroadPhase
 from .contact import (Contact, ContactSolver)
 from . import settings
@@ -35,7 +35,7 @@ MAX_TRANSLATION = settings.MAX_TRANSLATION
 MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR
 MAX_ROTATION = settings.MAX_ROTATION
 MAX_ROTATION_SQR = settings.MAX_ROTATION_SQR
-CONTACT_BAUMGARTE = settings.CONTACT_BAUMGARTE
+BAUMGARTE = settings.BAUMGARTE
 MAX_FLOAT = settings.MAX_FLOAT
 ANGULAR_SLEEP_TOLERANCE_SQR = settings.ANGULAR_SLEEP_TOLERANCE_SQR
 LINEAR_SLEEP_TOLERANCE_SQR = settings.LINEAR_SLEEP_TOLERANCE_SQR
@@ -64,128 +64,140 @@ class Island(object):
         del self.joints[:]
         
     def solve(self, step, gravity, allow_sleep):
-        # Integrate velocities and apply damping.
-        dynamic_bodies = [body for body in self.bodies if body.dynamic]
-        for body in dynamic_bodies:
-            # Integrate velocities.
-            body._linear_velocity += step.dt * (body._gravity_scale * gravity + body._inv_mass * body._force)
-            body._angular_velocity += step.dt * body._invI * body._torque
+        dt = step.dt
 
-            # Apply damping.
-            # ODE: dv/dt + c * v = 0
-            # Solution: v(t) = v0 * exp(-c * t)
-            # Time step: v(t + dt) = v0 * exp(-c * (t + dt)) = v0 * exp(-c * t) * exp(-c * dt) = v * exp(-c * dt)
-            # v2 = exp(-c * dt) * v1
-            # Taylor expansion:
-            # v2 = (1.0 - c * dt) * v1
-            body._linear_velocity *= clamp(1.0 - step.dt * body._linear_damping, 0.0, 1.0)
-            body._angular_velocity *= clamp(1.0 - step.dt * body._angular_damping, 0.0, 1.0)
+        positions = []
+        velocities = []
+        # Integrate velocities and apply damping. Initialize the body state.
+        for body in self.bodies:
+            c, a = body._sweep.c, body._sweep.a
+            v, w = body._linear_velocity, body._angular_velocity
 
-        # Partition contacts so that contacts with static bodies are solved last.
-        def contact_sort_key(c):
-            if c._fixture_a._body.static and c._fixture_b._body.static:
-                return 1
-            else:
-                return 0
+            # Store positions for continuous collision
+            body._sweep.c0 = Vec2(*c)
+            body._sweep.a0 = a
 
-        self.contacts.sort(key=contact_sort_key)
+            if body.dynamic:
+                # Integrate velocities.
+                v += dt * (body._gravity_scale * gravity + body._inv_mass * body._force)
+                w += dt * body._invI * body._torque
 
+                # Apply damping.
+                # ODE: dv/dt + c * v = 0
+                # Solution: v(t) = v0 * exp(-c * t)
+                # Time step: v(t + dt) = v0 * exp(-c * (t + dt)) = v0 * exp(-c * t) * exp(-c * dt) = v * exp(-c * dt)
+                # v2 = exp(-c * dt) * v1
+                # Taylor expansion:
+                # v2 = (1.0 - c * dt) * v1
+                body._linear_velocity *= clamp(1.0 - dt * body._linear_damping, 0.0, 1.0)
+                body._angular_velocity *= clamp(1.0 - dt * body._angular_damping, 0.0, 1.0)
+
+            positions.append((c, a))
+            velocities.append((v, w))
+                
         # Initialize velocity constraints.
-        contact_solver=ContactSolver(self.contacts, step.dt_ratio, step.warm_starting)
-
+        contact_solver=ContactSolver(step, self.contacts, positions, velocities)
         contact_solver.initialize_velocity_constraints()
 
         if step.warm_starting:
             contact_solver.warm_start()
         
         for joint in self.joints:
-            joint._init_velocity_constraints(step)
+            joint._init_velocity_constraints(step, positions, velocities)
 
         # Solve velocity constraints.
         for i in range(step.vel_iters):
             for joint in self.joints:
-                joint._solve_velocity_constraints(step)
+                joint._solve_velocity_constraints(step, positions, velocities)
             contact_solver.solve_velocity_constraints()
 
         # Post-solve (store impulses for warm starting).
         contact_solver.store_impulses()
 
+        body_count = len(self.bodies)
+
         # Integrate positions.
-        non_static_bodies = [body for body in self.bodies if not body.static]
-        for b in non_static_bodies:
+        for i in range(body_count):
+            c, a = positions[i]
+            v, w = velocities[i]
+
             # Check for large velocities.
-            translation = step.dt * b._linear_velocity
+            translation = dt * v
             if translation.dot(translation) > MAX_TRANSLATION_SQR:
                 ratio = MAX_TRANSLATION / translation.length
-                b._linear_velocity *= ratio
+                v *= ratio
 
-            rotation = step.dt * b._angular_velocity
+            rotation = dt * w
             if rotation**2 > MAX_ROTATION_SQR:
                 ratio = MAX_ROTATION / abs(rotation)
-                b._angular_velocity *= ratio
-
-            # Store positions for continuous collision.
-            b._sweep.c0 = copy(b._sweep.c)
-            b._sweep.a0 = b._sweep.a
+                w *= ratio
 
             # Integrate
-            b._sweep.c += step.dt * b._linear_velocity
-            b._sweep.a += step.dt * b._angular_velocity
+            c += dt * v
+            a += dt * w
 
-            # Compute new transform
-            b._synchronize_transform()
-
-            # Note: shapes are synchronized later.
-
-        # Iterate over constraints.
+            positions[i] = (c, a)
+            velocities[i] = (v, w)
+            
+        # Solve position constraints
         for i in range(step.pos_iters):
-            contacts_okay = contact_solver.solve_position_constraints(CONTACT_BAUMGARTE)
+            contacts_okay = contact_solver.solve_position_constraints()
 
             joints_okay = True
             for joint in self.joints:
-                joint_okay = joint._solve_position_constraints(CONTACT_BAUMGARTE)
+                joint_okay = joint._solve_position_constraints(step, positions, velocities)
                 joints_okay = joints_okay and joint_okay
 
             if contacts_okay and joints_okay:
                 # Exit early if the position errors are small.
                 break
 
-        self.report(contact_solver.constraints)
+        # Copy state buffers back to the bodies
+        for body, pos, vel in zip(self.bodies, positions, velocities):
+            body._sweep.c, body._sweep.a = pos
+            body._linear_velocity, body._angular_velocity = vel
+            body._synchronize_transform()
+        
+        self.report(contact_solver.velocity_constraints)
 
         if allow_sleep:
             min_sleep_time = MAX_FLOAT
 
+            non_static_bodies = [body for body in self.bodies if not body.static]
             for b in non_static_bodies:
-                if not body._allow_sleep:
-                    b._sleep_time = 0.0
-                    min_sleep_time = 0.0
-
                 if not body._allow_sleep or \
                         (b._angular_velocity**2) > ANGULAR_SLEEP_TOLERANCE_SQR or \
                         (b._linear_velocity.length_squared) > LINEAR_SLEEP_TOLERANCE_SQR:
                     b._sleep_time = 0.0
                     min_sleep_time = 0.0
                 else:
-                    b._sleep_time += step.dt
+                    b._sleep_time += dt
                     min_sleep_time = min(min_sleep_time, b._sleep_time)
 
             if min_sleep_time >= TIME_TO_SLEEP:
                 for body in self.bodies:
-                    b.awake = True
+                    b.awake = False
 
-    def solve_toi(self, sub_step, body_a, body_b):
-        contact_solver=ContactSolver(self.contacts, sub_step.dt_ratio, sub_step.warm_starting)
+    def solve_toi(self, sub_step, toi_index_a, toi_index_b):
+        # Initialize the body state
+        positions = [(body._sweep.c, body._sweep.a) for body in self.bodies]
+        velocities = [(body._linear_velocity, body._angular_velocity) for body in self.bodies]
+
+        contact_solver=ContactSolver(sub_step, self.contacts, positions, velocities)
 
         # Solve position constraints
         for i in range(sub_step.pos_iters):
-            contacts_okay=contact_solver.solve_toi_position_constraints(TOI_BAUMGARTE, body_a, body_b)
+            contacts_okay=contact_solver.solve_toi_position_constraints(toi_index_a, toi_index_b)
             if contacts_okay:
                 break
         
         # Leap of faith to new safe state
-        for body in self.bodies:
-            body._sweep.a0 = body._sweep.a
-            body._sweep.c0 = copy(body._sweep.c)
+        body_a, body_b = self.bodies[toi_index_a], self.bodies[toi_index_b]
+        body_a._sweep.c0, body_a._sweep.a0 = positions[toi_index_a]
+        body_b._sweep.c0, body_b._sweep.a0 = positions[toi_index_b]
+
+        body_a._sweep.c0 = copy(body_a._sweep.c0)
+        body_b._sweep.c0 = copy(body_b._sweep.c0)
 
         # No warm starting is needed for TOI events because warm
         # starting impulses were applied in the discrete solver.
@@ -198,39 +210,46 @@ class Island(object):
         # Don't store the TOI contact forces for warm starting because 
         # they can be quite large.
 
+        dt = sub_step.dt
         # Integrate positions.
-        bodies = [body for body in self.bodies if not body.static]
-        for body in bodies:
-            # Check for large velocities.
-            translation = sub_step.dt * body._linear_velocity
-            if translation*translation > MAX_TRANSLATION_SQR:
-                translation.normalize()
-                body._linear_velocity = (MAX_TRANSLATION * sub_step.inv_dt) * translation
+        for i, (body, pos, vel) in enumerate(zip(self.bodies, positions, velocities)):
+            c, a = pos
+            v, w = vel
 
-            rotation = sub_step.dt * body._angular_velocity
+            # Check for large velocities.
+            translation = dt * v
+            if translation.length_squared > MAX_TRANSLATION_SQR:
+                ratio = MAX_TRANSLATION / translation.length
+                v *= ratio
+
+            rotation = dt * w
             if rotation**2 > MAX_ROTATION_SQR:
-                if rotation < 0.0:
-                    body._angular_velocity = -sub_step.inv_dt * MAX_ROTATION
-                else:
-                    body._angular_velocity = sub_step.inv_dt * MAX_ROTATION
+                ratio = MAX_ROTATION / abs(rotation)
+                w *= ratio
 
             # Integrate
-            body._sweep.c += sub_step.dt * body._linear_velocity
-            body._sweep.a += sub_step.dt * body._angular_velocity
+            c += dt * v
+            a += dt * w
+
+            # Sync bodies
+            positions[i] = (c, a)
+            velocities[i] = (v, w)
+            body._sweep.c = Vec2(*c)
+            body._sweep.a = a
+            body._linear_velocity = Vec2(*v)
+            body._angular_velocity = w
 
             # Compute new transform
             body._synchronize_transform()
 
-            # Note: shapes are synchronized later.
-
-        self.report(contact_solver.constraints)
+        self.report(contact_solver.velocity_constraints)
 
     def report(self, constraints):
         if not self.post_solve:
             return
 
-        for contact, constraint in zip(self.contacts, constraints):
-            impulses=[(point.normal_impulse, point.tangent_impulse) for point in constraint.points]
+        for contact, vc in zip(self.contacts, constraints):
+            impulses=[(point.normal_impulse, point.tangent_impulse) for point in vc.points]
 
             self.post_solve(contact, impulses)
 

@@ -38,7 +38,7 @@ MAX_TRANSLATION = settings.MAX_TRANSLATION
 MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR
 MAX_ROTATION = settings.MAX_ROTATION
 MAX_ROTATION_SQR = settings.MAX_ROTATION_SQR
-CONTACT_BAUMGARTE = settings.CONTACT_BAUMGARTE
+BAUMGARTE = settings.BAUMGARTE
 EPSILON = settings.EPSILON
 MAX_FLOAT = settings.MAX_FLOAT
 ANGULAR_SLEEP_TOLERANCE_SQR = settings.ANGULAR_SLEEP_TOLERANCE_SQR
@@ -537,6 +537,7 @@ class World(object):
                 # Grab the next body off the stack and add it to the island.
                 body = stack.pop()
                 assert(body.active)
+                body._island_index = len(island.bodies)
                 island.bodies.append(body)
 
                 # Make sure the body is awake.
@@ -603,12 +604,12 @@ class World(object):
                     body._island_flag = False
 
         # Synchronize fixtures, check for out of range bodies.
-        for body in self.bodies:
-            # If a body was not in an island then it did not move.
-            if not body._island_flag or body._type == Body.STATIC:
-                continue
+        # If a body was not in an island then it did not move.
+        bodies = [body for body in self.bodies 
+                  if body._island_flag and body._type != Body.STATIC]
 
-            # Update fixtures (for broad-phase).
+        # Update fixtures (for broad-phase).
+        for body in bodies:
             body._synchronize_fixtures()
 
         # Look for new contacts.
@@ -745,7 +746,9 @@ class World(object):
 
             # Build the island
             island.clear()
+            body_a._island_index = len(island.bodies)
             island.bodies.append(body_a)
+            body_b._island_index = len(island.bodies)
             island.bodies.append(body_b)
             island.contacts.append(min_contact)
 
@@ -808,6 +811,7 @@ class World(object):
                     if other._type != Body.STATIC:
                         other.awake=True
 
+                    other._island_index = len(island.bodies)
                     island.bodies.append(other)
 
             sub_dt = (1.0 - min_alpha) * step.dt
@@ -818,21 +822,19 @@ class World(object):
                                 vel_iters = step.vel_iters,
                                 warm_starting = False)
 
-            island.solve_toi(sub_step, body_a, body_b)
+            island.solve_toi(sub_step, body_a._island_index, body_b._island_index)
 
             # Reset island flags and synchronize broad-phase proxies.
             for body in island.bodies:
                 body._island_flag = False
 
-                if body._type != Body.DYNAMIC:
-                    continue
+                if body._type == Body.DYNAMIC:
+                    body._synchronize_fixtures()
 
-                body._synchronize_fixtures()
-
-                # Invalidate all contact TOIs on this displaced body.
-                for contact in body._contacts:
-                    contact._toi_flag=False
-                    contact._island_flag=False
+                    # Invalidate all contact TOIs on this displaced body.
+                    for contact in body._contacts:
+                        contact._toi_flag=False
+                        contact._island_flag=False
 
             # Commit fixture proxy movements to the broad-phase so that new contacts are created.
             # Also, some contacts can be destroyed.

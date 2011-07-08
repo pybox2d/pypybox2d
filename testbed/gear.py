@@ -38,6 +38,35 @@ class Gear (Framework):
         circle2 = b2.Circle(2.0)
         box = b2.Polygon(box=(0.5, 0.5))
         
+        body1 = self.world.create_static_body(
+                    position=(10.0, 9.0),
+                    shapes=circle1,
+                )
+
+        body2 = self.world.create_dynamic_body(
+                    position=(10.0, 8.0),
+                    fixtures=b2.Fixture(box, density=5.0),
+                )
+        
+        body3 = self.world.create_dynamic_body(
+                    position=(10.0, 6.0),
+                    fixtures=b2.Fixture(circle2, density=5.0),
+                )
+        
+        joint1 = self.world.create_revolute_joint(
+                    body2, body1,
+                    anchor=body1.position)
+
+        joint2 = self.world.create_revolute_joint(
+                    body2, body3,
+                    anchor=body3.position)
+
+        joint4 = self.world.create_gear_joint(
+                    joint1, joint2,
+                    ratio = circle2.radius / circle1.radius
+                )
+
+        # --
         body1 = self.world.create_dynamic_body(
                     position = (-3.0, 12.0),
                     fixtures = b2.Fixture(circle1, density=5.0),

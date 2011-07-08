@@ -20,8 +20,7 @@
 
 from __future__ import absolute_import
 
-__all__ = ('Jacobian', 
-           'Joint', 'DistanceJoint', 'RevoluteJoint', 'FrictionJoint', 
+__all__ = ('Joint', 'DistanceJoint', 'RevoluteJoint', 'FrictionJoint', 
            'PrismaticJoint', 'WeldJoint', 'RopeJoint', 'WheelJoint', 
            'MouseJoint', 'PulleyJoint', 'GearJoint',
            'INACTIVE_LIMIT', 'AT_LOWER_LIMIT', 'AT_UPPER_LIMIT', 'EQUAL_LIMITS', 
@@ -41,31 +40,6 @@ from .settings import (EPSILON, LINEAR_SLOP, ANGULAR_SLOP, MAX_LINEAR_CORRECTION
 
 INACTIVE_LIMIT, AT_LOWER_LIMIT, AT_UPPER_LIMIT, EQUAL_LIMITS = range(4)
 ALLOWED_STRETCH = 10.0 * LINEAR_SLOP
-
-class Jacobian(object):
-    __slots__ = ['linear_a', 'linear_b', 'angular_a', 'angular_b']
-    def __init__(self):
-        self.linear_a = Vec2()
-        self.linear_b = Vec2()
-        self.angular_a = 0.0
-        self.angular_b = 0.0
-
-    def zero(self):
-        self.linear_a.zero()
-        self.linear_b.zero()
-        self.angular_a = 0.0
-        self.angular_b = 0.0
-
-    def set(self, x1, a1, x2, a2):
-        self.linear_a = Vec2(*x1)
-        self.linear_b = Vec2(*x2)
-        self.angular_a = a1
-        self.angular_b = a2
-
-    def compute(self, x1, a1, x2, a2):
-        return self.linear_a.dot(x1) + self.angular_a * a1 + \
-                self.linear_b.dot(x2) + self.angular_b * a2
-
 
 class Joint(object):
     """
@@ -128,18 +102,18 @@ class Joint(object):
         return self._collide_connected
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * Vec2(self._impulse.x, self._impulse.y)
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._impulse.z
 
-    def _init_velocity_constraints(self, step):
+    def _init_velocity_constraints(self, step, positions, velocities):
         raise NotImplementedError # Implemented in subclass
-    def _solve_velocity_constraints(self, step):
+    def _solve_velocity_constraints(self, step, positions, velocities):
         raise NotImplementedError # Implemented in subclass
-    def _solve_position_constraints(self, baumgarte):
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns True if the position errors are within tolerance."""
         raise NotImplementedError # Implemented in subclass
 
@@ -155,19 +129,19 @@ class DistanceJoint(Joint):
     """
 
     # 1-D constrained system
-    # m (v2 - v1) = lambda
-    # v2 + (beta/h) * x1 + gamma * lambda = 0, gamma has units of inverse mass.
-    # x2 = x1 + h * v2
+    # m (vb - va) = lambda
+    # vb + (beta/h) * x1 + gamma * lambda = 0, gamma has units of inverse mass.
+    # x2 = x1 + h * vb
     #                                                                           
     # 1-D mass-damper-spring system
-    # m (v2 - v1) + h * d * v2 + h * k * 
+    # m (vb - va) + h * d * vb + h * k * 
     #                                                                           
     # C = norm(p2 - p1) - L
     # u = (p2 - p1) / norm(p2 - p1)
-    # Cdot = dot(u, v2 + cross(w2, r2) - v1 - cross(w1, r1))
-    # J = [-u -cross(r1, u) u cross(r2, u)]
+    # Cdot = dot(u, vb + cross(wb, rb) - va - cross(wa, ra))
+    # J = [-u -cross(ra, u) u cross(rb, u)]
     # K = J * invM * JT
-    #   = invMass1 + invI1 * cross(r1, u)^2 + invMass2 + invI2 * cross(r2, u)^2
+    #   = invMass1 + invIa * cross(ra, u)^2 + invMass2 + invIb * cross(rb, u)^2
     def __init__(self, body_a, body_b, anchor_a=(0,0), anchor_b=(0,0), frequency=0.0, 
                     damping_ratio=0.0, length=None, collide_connected=False, 
                     local_anchor_a=None, local_anchor_b=None):
@@ -261,21 +235,42 @@ class DistanceJoint(Joint):
         self._damping_ratio = damping_ratio
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return (inv_dt * self._impulse) * self._u
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return 0.0
 
-    def _init_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
+
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
+
+        inv_mass_a = self._inv_mass_a = body_a._inv_mass
+        inv_mass_b = self._inv_mass_b = body_b._inv_mass
+
+        inv_Ia = self._inv_Ia = body_a._invI
+        inv_Ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
         # Compute the effective mass matrix.
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
-        self._u = b2._sweep.c + r2 - b1._sweep.c - r1
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
+
+        u = self._u = cb + rb - ca - ra
 
         # Handle singularity.
         length = self._u.length
@@ -284,9 +279,9 @@ class DistanceJoint(Joint):
         else:
             self._u = Vec2(0.0, 0.0)
 
-        cr1u = r1.cross(self._u)
-        cr2u = r2.cross(self._u)
-        inv_mass = b1._inv_mass + b1._invI * cr1u * cr1u + b2._inv_mass + b2._invI * cr2u * cr2u
+        cr_au = ra.cross(u) ** 2
+        cr_bu = rb.cross(u) ** 2
+        inv_mass = inv_mass_a + inv_Ia * cr_au + inv_mass_b + inv_Ib * cr_bu
 
         if inv_mass != 0.0:
             self._mass = 1.0 / inv_mass
@@ -306,12 +301,14 @@ class DistanceJoint(Joint):
             k = self._mass * (omega ** 2)
 
             # magic formulas
-            gamma = step.dt * (d + step.dt * k)
+            dt = step.dt
+
+            gamma = dt * (d + dt * k)
             if gamma != 0.0:
                 self._gamma = 1.0 / gamma
             else:
                 self._gamma = 0.0
-            self._bias = C * step.dt * k * self._gamma
+            self._bias = C * dt * k * self._gamma
 
             mass = inv_mass + self._gamma
             if mass != 0.0:
@@ -324,64 +321,79 @@ class DistanceJoint(Joint):
             self._impulse *= step.dt_ratio
 
             P = self._impulse * self._u
-            b1._linear_velocity -= b1._inv_mass * P
-            b1._angular_velocity -= b1._invI * r1.cross(P)
-            b2._linear_velocity += b2._inv_mass * P
-            b2._angular_velocity += b2._invI * r2.cross(P)
+            va -= inv_mass_a * P
+            wa -= inv_Ia * ra.cross(P)
+            vb += inv_mass_b * P
+            wb += inv_Ib * rb.cross(P)
         else:
             self._impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        ra, rb = self._ra, self._rb
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
         # Cdot = dot(u, v + cross(w, r))
-        v1 = b1._linear_velocity + scalar_cross(b1._angular_velocity, r1)
-        v2 = b2._linear_velocity + scalar_cross(b2._angular_velocity, r2)
-        Cdot = self._u.dot(v2 - v1)
+        vpa = va + scalar_cross(wa, ra)
+        vpb = vb + scalar_cross(wb, rb)
+        Cdot = self._u.dot(vpb - vpa)
 
         impulse = -self._mass * (Cdot + self._bias + self._gamma * self._impulse)
         self._impulse += impulse
 
         P = impulse * self._u
-        b1._linear_velocity -= b1._inv_mass * P
-        b1._angular_velocity -= b1._invI * r1.cross(P)
-        b2._linear_velocity += b2._inv_mass * P
-        b2._angular_velocity += b2._invI * r2.cross(P)
+        va -= ma * P
+        wa -= ia * ra.cross(P)
+        vb += mb * P
+        wb += ib * rb.cross(P)
 
-    def _solve_position_constraints(self, baumgarte):
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
+
+    def _solve_position_constraints(self, step, positions, velocities):
         if self._frequency> 0.0:
             # There is no position correction for soft distance constraints.
             return True
 
-        b1 = self._body_a
-        b2 = self._body_b
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        d = b2._sweep.c + r2 - b1._sweep.c - r1
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
-        length = d.normalize()
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+
+        u = cb + rb - ca - ra
+
+        length = u.normalize()
         C = length - self._length
 
         impulse = -self._mass * clamp(C, -MAX_LINEAR_CORRECTION, MAX_LINEAR_CORRECTION)
-        self._u = d
-        P = impulse * self._u
+        P = impulse * u
 
-        b1._sweep.c -= b1._inv_mass * P
-        b1._sweep.a -= b1._invI * r1.cross(P)
-        b2._sweep.c += b2._inv_mass * P
-        b2._sweep.a += b2._invI * r2.cross(P)
+        ca -= ma * P
+        aa -= ia * ra.cross(P)
+        cb += mb * P
+        ab += ib * rb.cross(P)
 
-        b1._synchronize_transform()
-        b2._synchronize_transform()
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
 
         return abs(C) < LINEAR_SLOP
-
 
 
 class RevoluteJoint(Joint):
@@ -558,58 +570,72 @@ class RevoluteJoint(Joint):
         return inv_dt * self._motor_impulse
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * Vec2(*self._impulse[:2])
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._impulse.z
 
-    def _init_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
 
-        if self._motor_enabled or self._limit_enabled:
-            # You cannot create a rotation limit between bodies that
-            # both have fixed rotation.
-            assert(b1._invI > 0.0 or b2._invI > 0.0)
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
+
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
+
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
         # Compute the effective mass matrix.
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
-        # J = [-I -r1_skew I r2_skew]
+        # J = [-I -ra_skew I rb_skew]
         #     [ 0       -1 0       1]
         # r_skew = [-ry; rx]
 
         # Matlab
-        # K = [ m1+r1y^2*i1+m2+r2y^2*i2,  -r1y*i1*r1x-r2y*i2*r2x,          -r1y*i1-r2y*i2]
-        #     [  -r1y*i1*r1x-r2y*i2*r2x, m1+r1x^2*i1+m2+r2x^2*i2,           r1x*i1+r2x*i2]
-        #     [          -r1y*i1-r2y*i2,           r1x*i1+r2x*i2,                   i1+i2]
-
-        m1, m2 = b1._inv_mass, b2._inv_mass
-        i1, i2 = b1._invI, b2._invI
+        # K = [ mA+ray^2*iA+mB+rby^2*iB,  -ray*iA*rax-rby*iB*rbx,          -ray*iA-rby*iB]
+        #     [  -ray*iA*rax-rby*iB*rbx, mA+rax^2*iA+mB+rbx^2*iB,           rax*iA+rbx*iB]
+        #     [          -ray*iA-rby*iB,           rax*iA+rbx*iB,                   iA+iB]
 
         # TODO: when rewriting Mat33 in C, these will need to be _col1, etc.
-        self._mass.col1.x = m1 + m2 + r1.y * r1.y * i1 + r2.y * r2.y * i2
-        self._mass.col2.x = -r1.y * r1.x * i1 - r2.y * r2.x * i2
-        self._mass.col3.x = -r1.y * i1 - r2.y * i2
+        self._mass.col1.x = ma + mb + ra.y * ra.y * ia + rb.y * rb.y * ib
+        self._mass.col2.x = -ra.y * ra.x * ia - rb.y * rb.x * ib
+        self._mass.col3.x = -ra.y * ia - rb.y * ib
         self._mass.col1.y = self._mass.col2.x
-        self._mass.col2.y = m1 + m2 + r1.x * r1.x * i1 + r2.x * r2.x * i2
-        self._mass.col3.y = r1.x * i1 + r2.x * i2
+        self._mass.col2.y = ma + mb + ra.x * ra.x * ia + rb.x * rb.x * ib
+        self._mass.col3.y = ra.x * ia + rb.x * ib
         self._mass.col1.z = self._mass.col3.x
         self._mass.col2.z = self._mass.col3.y
-        self._mass.col3.z = i1 + i2
+        self._mass.col3.z = ia + ib
 
-        self._motor_mass = i1 + i2
+        self._motor_mass = ia + ib
+        fixed_rotation = (self._motor_mass == 0.0)
+
         if self._motor_mass > 0.0:
             self._motor_mass = 1.0 / self._motor_mass
 
-        if not self._motor_enabled:
+        if not self._motor_enabled or fixed_rotation:
             self._motor_impulse = 0.0
 
-        if self._limit_enabled:
-            joint_angle = b2._sweep.a - b1._sweep.a - self._reference_angle
+        if self._limit_enabled and not fixed_rotation:
+            joint_angle = ab - aa - self._reference_angle
             if abs(self._upper_angle - self._lower_angle) < 2.0 * ANGULAR_SLOP:
                 self._limit_state = EQUAL_LIMITS
             elif joint_angle <= self._lower_angle:
@@ -633,51 +659,50 @@ class RevoluteJoint(Joint):
 
             P = Vec2(self._impulse.x, self._impulse.y)
 
-            b1._linear_velocity -= m1 * P
-            b1._angular_velocity -= i1 * (r1.cross(P) + self._motor_impulse + self._impulse.z)
+            va -= ma * P
+            wa -= ia * (ra.cross(P) + self._motor_impulse + self._impulse.z)
 
-            b2._linear_velocity += m2 * P
-            b2._angular_velocity += i2 * (r2.cross(P) + self._motor_impulse + self._impulse.z)
+            vb += mb * P
+            wb += ib * (rb.cross(P) + self._motor_impulse + self._impulse.z)
         else:
             self._impulse.zero()
             self._motor_impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        v1 = b1._linear_velocity
-        w1 = b1._angular_velocity
-        v2 = b2._linear_velocity
-        w2 = b2._angular_velocity
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
 
-        m1, m2 = b1._inv_mass, b2._inv_mass
-        i1, i2 = b1._invI, b2._invI
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
+        ra, rb = self._ra, self._rb
+
+        fixed_rotation = ((ia + ib) == 0.0)
 
         # Solve motor constraint.
-        if self._motor_enabled and self._limit_state != EQUAL_LIMITS:
-            Cdot = w2 - w1 - self._motor_speed
+        if self._motor_enabled and self._limit_state != EQUAL_LIMITS and not fixed_rotation:
+            Cdot = wb - wa - self._motor_speed
             impulse = self._motor_mass * (-Cdot)
             old_impulse = self._motor_impulse
             max_impulse = step.dt * self._max_motor_torque
             self._motor_impulse = clamp(self._motor_impulse + impulse, -max_impulse, max_impulse)
             impulse = self._motor_impulse - old_impulse
 
-            w1 -= i1 * impulse
-            w2 += i2 * impulse
+            wa -= ia * impulse
+            wb += ib * impulse
 
         # Solve limit constraint.
-        if self._limit_enabled and self._limit_state != INACTIVE_LIMIT:
-            # Compute the effective mass matrix.
-            r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-            r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
-
+        if self._limit_enabled and self._limit_state != INACTIVE_LIMIT and not fixed_rotation:
             # Solve point-to-point constraint
-            Cdot1 = v2 + scalar_cross(w2, r2) - v1 - scalar_cross(w1, r1)
-            Cdot2 = w2 - w1
+            Cdot1 = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
+            Cdot2 = wb - wa
             Cdot = Vec3(Cdot1.x, Cdot1.y, Cdot2)
 
-            impulse = self._mass.solve3x3(-Cdot)
+            impulse = -self._mass.solve3x3(Cdot)
 
             if self._limit_state == EQUAL_LIMITS:
                 self._impulse += impulse
@@ -710,43 +735,41 @@ class RevoluteJoint(Joint):
 
             P = Vec2(impulse.x, impulse.y)
 
-            v1 -= m1 * P
-            w1 -= i1 * (r1.cross(P) + impulse.z)
+            va -= ma * P
+            wa -= ia * (ra.cross(P) + impulse.z)
 
-            v2 += m2 * P
-            w2 += i2 * (r2.cross(P) + impulse.z)
+            vb += mb * P
+            wb += ib * (rb.cross(P) + impulse.z)
         else:
-            # Compute the effective mass matrix.
-            r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-            r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
-
             # Solve point-to-point constraint
-            Cdot = v2 + scalar_cross(w2, r2) - v1 - scalar_cross(w1, r1)
+            Cdot = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
             impulse = self._mass.solve2x2(-Cdot)
 
             self._impulse.x += impulse.x
             self._impulse.y += impulse.y
 
-            v1 -= m1 * impulse
-            w1 -= i1 * r1.cross(impulse)
+            va -= ma * impulse
+            wa -= ia * ra.cross(impulse)
 
-            v2 += m2 * impulse
-            w2 += i2 * r2.cross(impulse)
+            vb += mb * impulse
+            wb += ib * rb.cross(impulse)
 
-        b1._angular_velocity = w1
-        b2._angular_velocity = w2
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-    def _solve_position_constraints(self, baumgarte):
-        b1 = self._body_a
-        b2 = self._body_b
+    def _solve_position_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        # TODO_ERIN block solve with limit.
+        ia, ib = self._inv_Ia, self._inv_Ib
+        fixed_rotation = ((ia + ib) == 0.0)
         angular_error = 0.0
         position_error = 0.0
 
         # Solve angular limit constraint.
-        if self._limit_enabled and self._limit_state != INACTIVE_LIMIT:
-            angle = b2._sweep.a - b1._sweep.a - self._reference_angle
+        if self._limit_enabled and self._limit_state != INACTIVE_LIMIT and not fixed_rotation:
+            angle = ab - aa - self._reference_angle
             limit_impulse = 0.0
 
             if self._limit_state == EQUAL_LIMITS:
@@ -769,66 +792,41 @@ class RevoluteJoint(Joint):
                 C = clamp(C - ANGULAR_SLOP, 0.0, MAX_ANGULAR_CORRECTION)
                 limit_impulse = -self._motor_mass * C
 
-            b1._sweep.a -= b1._invI * limit_impulse
-            b2._sweep.a += b2._invI * limit_impulse
-
-            b1._synchronize_transform()
-            b2._synchronize_transform()
+            aa -= self._inv_Ia * limit_impulse
+            ab += self._inv_Ib * limit_impulse
 
         # Solve point-to-point constraint.
-        # Compute the effective mass matrix.
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        C = b2._sweep.c + r2 - b1._sweep.c - r1
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+
+        C = cb + rb - ca - ra
         position_error = C.length
 
-        inv_mass1, inv_mass2 = b1._inv_mass, b2._inv_mass
-        inv_i1, inv_i2 = b1._invI, b2._invI
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        inv_ia, inv_ib = self._inv_Ia, self._inv_Ib
 
-        # Handle large detachment.
-        if C.length_squared > ALLOWED_STRETCH**2:
-            # Use a particle solution (no rotation).
-            u = Vec2(*C)
-            u.normalize()
-            m = inv_mass1 + inv_mass2
-            if m > 0.0:
-                m = 1.0 / m
-            impulse = m * (-C)
+        K = Mat22()
+        K.col1.x = ma + mb + ia * ra.y * ra.y + ib * rb.y * rb.y
+        K.col1.y = -ia * ra.x * ra.y - ib * rb.x * rb.y
+        K.col2.x = K.col1.y
+        K.col2.y = ma + mb + ia * ra.x * ra.x + ib * rb.x * rb.x
 
-            k_beta = 0.5
-            b1._sweep.c -= k_beta * inv_mass1 * impulse
-            b2._sweep.c += k_beta * inv_mass2 * impulse
+        impulse = -K.solve(C)
 
-            C = b2._sweep.c + r2 - b1._sweep.c - r1
+        ca -= ma * impulse
+        aa -= inv_ia * ra.cross(impulse)
 
-        K1 = Mat22()
-        K1._col1.x = inv_mass1 + inv_mass2;  K1._col2.x = 0.0
-        K1._col1.y = 0.0;                    K1._col2.y = inv_mass1 + inv_mass2
+        cb += mb * impulse
+        ab += inv_ib * rb.cross(impulse)
 
-        K2 = Mat22()
-        K2._col1.x =  inv_i1 * r1.y * r1.y;  K2._col2.x = -inv_i1 * r1.x * r1.y
-        K2._col1.y = -inv_i1 * r1.x * r1.y;  K2._col2.y =  inv_i1 * r1.x * r1.x
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
 
-        K3 = Mat22()
-        K3._col1.x =  inv_i2 * r2.y * r2.y;  K3._col2.x = -inv_i2 * r2.x * r2.y
-        K3._col1.y = -inv_i2 * r2.x * r2.y;  K3._col2.y =  inv_i2 * r2.x * r2.x
-
-        K = K1 + K2 + K3
-        impulse = K.solve(-C)
-
-        b1._sweep.c -= b1._inv_mass * impulse
-        b1._sweep.a -= b1._invI * r1.cross(impulse)
-
-        b2._sweep.c += b2._inv_mass * impulse
-        b2._sweep.a += b2._invI * r2.cross(impulse)
-
-        b1._synchronize_transform()
-        b2._synchronize_transform()
-        
         return position_error <= LINEAR_SLOP and angular_error <= ANGULAR_SLOP
-
-
 
 class FrictionJoint(Joint):
     """
@@ -836,16 +834,16 @@ class FrictionJoint(Joint):
     It provides 2D translational friction and angular friction.
     """
     # Point-to-point constraint
-    # Cdot = v2 - v1
-    #      = v2 + cross(w2, r2) - v1 - cross(w1, r1)
-    # J = [-I -r1_skew I r2_skew ]
+    # Cdot = vb - va
+    #      = vb + cross(wb, rb) - va - cross(wa, ra)
+    # J = [-I -ra_skew I rb_skew ]
     # Identity used:
     # w k % (rx i + ry j) = w * (-ry i + rx j)
 
     # Angle constraint
-    # Cdot = w2 - w1
+    # Cdot = wb - wa
     # J = [0 0 -1 0 0 1]
-    # K = invI1 + invI2
+    # K = invIa + invIb
     def __init__(self, body_a, body_b, local_anchor_a=(0,0), local_anchor_b=(0,0),
                          max_force=0.0, max_torque=0.0, collide_connected=False):
         if body_a is None or body_b is None:
@@ -866,11 +864,11 @@ class FrictionJoint(Joint):
                             self._collide_connected)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * self._linear_impulse
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._angular_impulse
 
     @property
@@ -906,42 +904,59 @@ class FrictionJoint(Joint):
             raise ValueError('Max torque must be >= 0.0')
         self._max_torque = max_torque
 
-    def _init_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
+
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
+
+        inv_mass_a = self._inv_mass_a = body_a._inv_mass
+        inv_mass_b = self._inv_mass_b = body_b._inv_mass
+
+        inv_Ia = self._inv_Ia = body_a._invI
+        inv_Ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
         # Compute the effective mass matrix.
-        ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
-        # J = [-I -r1_skew I r2_skew]
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+
+        # J = [-I -ra_skew I rb_skew]
         #     [ 0       -1 0       1]
         # r_skew = [-ry; rx]
 
         # Matlab
-        # K = [ mA+r1y^2*iA+mB+r2y^2*iB,  -r1y*iA*r1x-r2y*iB*r2x,          -r1y*iA-r2y*iB]
-        #     [  -r1y*iA*r1x-r2y*iB*r2x, mA+r1x^2*iA+mB+r2x^2*iB,           r1x*iA+r2x*iB]
-        #     [          -r1y*iA-r2y*iB,           r1x*iA+r2x*iB,                   iA+iB]
+        # K = [ mA+ray^2*iA+mB+rby^2*iB,  -ray*iA*rax-rby*iB*rbx,          -ray*iA-rby*iB]
+        #     [  -ray*iA*rax-rby*iB*rbx, mA+rax^2*iA+mB+rbx^2*iB,           rax*iA+rbx*iB]
+        #     [          -ray*iA-rby*iB,           rax*iA+rbx*iB,                   iA+iB]
 
-        m_a, m_b = ba._inv_mass, bb._inv_mass
-        i_a, i_b = ba._invI, bb._invI
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
-        K1 = Mat22()
-        K1._col1.x = m_a + m_b;  K1._col2.x = 0.0
-        K1._col1.y = 0.0;        K1._col2.y = m_a + m_b
+        K = Mat22()
+        K.col1.x = inv_mass_a + inv_mass_b + inv_Ia * ra.y * ra.y + inv_Ib * rb.y * rb.y
+        K.col1.y = -inv_Ia * ra.x * ra.y - inv_Ib * rb.x * rb.y
+        K.col2.x = K.col1.y
+        K.col2.y = inv_mass_a + inv_mass_b + inv_Ia * ra.x * ra.x + inv_Ib * rb.x * rb.x
 
-        K2 = Mat22()
-        K2._col1.x =  i_a * ra.y * ra.y; K2._col2.x = -i_a * ra.x * ra.y
-        K2._col1.y = -i_a * ra.x * ra.y; K2._col2.y =  i_a * ra.x * ra.x
-
-        K3 = Mat22()
-        K3._col1.x =  i_b * rb.y * rb.y; K3._col2.x = -i_b * rb.x * rb.y
-        K3._col1.y = -i_b * rb.x * rb.y; K3._col2.y =  i_b * rb.x * rb.x
-
-        K = K1 + K2 + K3
         self._linear_mass = K.inverse
+        self._angular_mass = inv_Ia + inv_Ib
 
-        self._angular_mass = i_a + i_b
         if self._angular_mass > 0.0:
             self._angular_mass = 1.0 / self._angular_mass
 
@@ -949,53 +964,55 @@ class FrictionJoint(Joint):
             # Scale impulses to support a variable time step.
             self._linear_impulse *= step.dt_ratio
             self._angular_impulse *= step.dt_ratio
+            
+            P = self._linear_impulse
+            va -= inv_mass_a * P
+            wa -= inv_Ia * (ra.cross(P) + self._angular_impulse)
 
-            P = Vec2(self._linear_impulse.x, self._linear_impulse.y)
-
-            ba._linear_velocity -= m_a * P
-            ba._angular_velocity -= i_a * (ra.cross(P) + self._angular_impulse)
-
-            bb._linear_velocity += m_b * P
-            bb._angular_velocity += i_b * (rb.cross(P) + self._angular_impulse)
+            vb += inv_mass_b * P
+            wb += inv_Ib * (rb.cross(P) + self._angular_impulse)
         else:
             self._linear_impulse.zero()
             self._angular_impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        v_a = ba._linear_velocity
-        w_a = ba._angular_velocity
-        v_b = bb._linear_velocity
-        w_b = bb._angular_velocity
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        dt = step.dt
 
-        m_a, m_b = ba._inv_mass, bb._inv_mass
-        i_a, i_b = ba._invI, bb._invI
+        index_a, index_b = self._indices
 
-        ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        ra, rb = self._ra, self._rb
+
+        inv_mass_a, inv_mass_b = self._inv_mass_a, self._inv_mass_b
+        inv_Ia, inv_Ib = self._inv_Ia, self._inv_Ib
 
         # Solve angular friction
-        Cdot = w_b - w_a
+        Cdot = wb - wa
         impulse = -self._angular_mass * Cdot
 
         old_impulse = self._angular_impulse
-        max_impulse = step.dt * self._max_torque
+        max_impulse = dt * self._max_torque
         self._angular_impulse = clamp(self._angular_impulse + impulse, -max_impulse, max_impulse)
         impulse = self._angular_impulse - old_impulse
 
-        w_a -= i_a * impulse
-        w_b += i_b * impulse
+        wa -= inv_Ia * impulse
+        wb += inv_Ib * impulse
 
         # Solve linear friction
-        Cdot = v_b + scalar_cross(w_b, rb) - v_a - scalar_cross(w_a, ra)
+        Cdot = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
 
         impulse = -(self._linear_mass * Cdot)
         old_impulse = Vec2(*self._linear_impulse)
         self._linear_impulse += impulse
 
-        max_impulse = step.dt * self._max_force
+        max_impulse = dt * self._max_force
 
         if self._linear_impulse.length_squared > max_impulse ** 2:
             self._linear_impulse.normalize()
@@ -1003,22 +1020,22 @@ class FrictionJoint(Joint):
 
         impulse = self._linear_impulse - old_impulse
 
-        v_a -= m_a * impulse
-        w_a -= i_a * ra.cross(impulse)
+        va -= inv_mass_a * impulse
+        wa -= inv_Ia * ra.cross(impulse)
 
-        v_b += m_b * impulse
-        w_b += i_b * rb.cross(impulse)
+        vb += inv_mass_b * impulse
+        wb += inv_Ib * rb.cross(impulse)
 
-        ba._angular_velocity = w_a
-        bb._angular_velocity = w_b
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
 
-    def _solve_position_constraints(self, baumgarte):
+    def _solve_position_constraints(self, step, positions, velocities):
         return True
 
 class PrismaticJoint(Joint):
     """
     A prismatic joint. This joint provides one degree of freedom: translation
-    along an axis fixed in body1. Relative rotation is prevented. You can
+    along an axis fixed in body_a. Relative rotation is prevented. You can
     use a joint limit to restrict the range of motion and a joint motor to
     drive the motion or to model joint friction.
     """
@@ -1090,11 +1107,11 @@ class PrismaticJoint(Joint):
                 self._local_x_axis)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * (self._impulse.x * self._perp + (self._motor_impulse + self._impulse.z) * self._axis)
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._impulse.y
 
     @property
@@ -1123,19 +1140,19 @@ class PrismaticJoint(Joint):
         ba = self._body_a
         bb = self._body_b
 
-        ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
-        p1 = ba._sweep.c + ra
-        p2 = bb._sweep.c + rb
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+        p1 = ca + ra
+        p2 = cb + rb
         d = p2 - p1
         axis = self._body_a.get_world_vector(self._local_x_axis);
 
-        v1 = ba._linear_velocity
-        v2 = bb._linear_velocity
-        w1 = ba._angular_velocity
-        w2 = bb._angular_velocity
+        va = va
+        vb = vb
+        wa = aa
+        wb = ab
 
-        speed = d.dot(scalar_cross(w1, axis)) + axis.dot(v2 + scalar_cross(w2, rb) - v1 - scalar_cross(w1, ra))
+        speed = d.dot(scalar_cross(wa, axis)) + axis.dot(vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra))
         return speed
 
     @property
@@ -1211,48 +1228,60 @@ class PrismaticJoint(Joint):
             body.awake = True
         self._max_motor_force = force
 
-    def _init_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
 
-        self._local_center_a = Vec2(*ba._sweep.local_center)
-        self._local_center_b = Vec2(*bb._sweep.local_center)
-        xf1 = ba._xf
-        xf2 = bb._xf
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
 
-        # Compute the effective mass matrix.
-        r1 = xf1._rotation * (self._local_anchor_a - self._local_center_a)
-        r2 = xf2._rotation * (self._local_anchor_b - self._local_center_b)
-        d = bb._sweep.c + r2 - ba._sweep.c - r1
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
 
-        m1 = self._inv_mass_a = ba._inv_mass
-        i1 = self._inv_Ia = ba._invI
-        m2 = self._inv_mass_b = bb._inv_mass
-        i2 = self._inv_Ib = bb._invI
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
+
+        # Compute the effective masses.
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
+
+        d = cb + rb - ca - ra
 
         # Compute motor Jacobian and effective mass.
-        self._axis = xf1._rotation * self._local_x_axis
-        a1 = self._a1 = (d + r1).cross(self._axis)
-        a2 = self._a2 = r2.cross(self._axis)
+        axis = self._axis = qa * self._local_x_axis
+        a1 = self._a1 = (d + ra).cross(axis)
+        a2 = self._a2 = rb.cross(axis)
 
-        self._motor_mass = m1 + m2 + i1 * self._a1**2 + i2 * self._a2**2
+        self._motor_mass = ma + mb + ia * a1**2 + ib * a2**2
         if self._motor_mass > 0.0:
             self._motor_mass = 1.0 / self._motor_mass
 
         # Prismatic constraint.
-        self._perp = xf1._rotation * self._local_y_axis
+        perp = self._perp = qa * self._local_y_axis
 
-        s1 = self._s1 = (d + r1).cross(self._perp)
-        s2 = self._s2 = r2.cross(self._perp)
+        s1 = self._s1 = (d + ra).cross(perp)
+        s2 = self._s2 = rb.cross(perp)
 
-        k11 = m1 + m2 + i1 * (s1 ** 2) + i2 * (s2 ** 2)
-        k12 = i1 * s1 + i2 * s2
-        k13 = i1 * s1 * a1 + i2 * s2 * a2
-        k22 = i1 + i2
+        k11 = ma + mb + ia * (s1 ** 2) + ib * (s2 ** 2)
+        k12 = ia * s1 + ib * s2
+        k13 = ia * s1 * a1 + ib * s2 * a2
+        k22 = ia + ib
         if k22 == 0.0:
+            # For bodies with fixed rotation.
             k22 = 1.0
-        k23 = i1 * a1 + i2 * a2
-        k33 = m1 + m2 + i1 * (a1 ** 2) + i2 * (a2 ** 2)
+        k23 = ia * a1 + ib * a2
+        k33 = ma + mb + ia * (a1 ** 2) + ib * (a2 ** 2)
 
         self._k = Mat33((k11, k12, k13), (k12, k22, k23), (k13, k23, k33))
 
@@ -1287,137 +1316,41 @@ class PrismaticJoint(Joint):
             ix, iy, iz = self._impulse
             mi = self._motor_impulse
 
-            P = ix * self._perp + (mi + iz) * self._axis
+            P = ix * perp + (mi + iz) * axis
             L1 = ix * s1 + iy + (mi + iz) * a1
             L2 = ix * s2 + iy + (mi + iz) * a2
 
-            ba._linear_velocity -= m1 * P
-            ba._angular_velocity -= i1 * L1
+            va -= ma * P
+            wa -= ia * L1
 
-            bb._linear_velocity += m2 * P
-            bb._angular_velocity += i2 * L2
+            vb += mb * P
+            wb += ib * L2
         else:
             self._impulse.zero()
             self._motor_impulse = 0.0
-
-    def _solve_position_constraints(self, baumgarte):
-        """This returns True if the position errors are within tolerance."""
-        ba = self._body_a
-        bb = self._body_b
-
-        center_a = ba._sweep.c
-        a1 = ba._sweep.a
-
-        center_b = bb._sweep.c
-        a2 = bb._sweep.a
-
-        # Solve linear limit constraint.
-        linear_error = 0.0
-        angular_error = 0.0
-        active = False
-        C2 = 0.0
-
-        R1 = Mat22()
-        R2 = Mat22()
-        R1.angle = a1
-        R2.angle = a2
-
-        r1 = R1 * (self._local_anchor_a - self._local_center_a)
-        r2 = R2 * (self._local_anchor_b - self._local_center_b)
-        d = center_b + r2 - center_a - r1
-
-        if self._limit_enabled:
-            self._axis = R1 * self._local_x_axis
-            self._a1 = (d + r1).cross(self._axis)
-            self._a2 = r2.cross(self._axis)
-
-            translation = self._axis.dot(d)
-            if abs(self._upper_limit - self._lower_limit) < 2.0 * LINEAR_SLOP:
-                # Prevent large angular corrections
-                C2 = clamp(translation, -MAX_LINEAR_CORRECTION, MAX_LINEAR_CORRECTION)
-                linear_error = abs(translation)
-                active = True
-            elif translation <= self._lower_limit:
-                # Prevent large linear corrections and allow some slop.
-                C2 = clamp(translation - self._lower_limit + LINEAR_SLOP, -MAX_LINEAR_CORRECTION, 0.0)
-                linear_error = self._lower_limit - translation
-                active = True
-            elif translation >= self._upper_limit:
-                # Prevent large linear corrections and allow some slop.
-                C2 = clamp(translation - self._upper_limit - LINEAR_SLOP, 0.0, MAX_LINEAR_CORRECTION)
-                linear_error = translation - self._upper_limit
-                active = True
-
-        self._perp = R1 * self._local_y_axis
-
-        s1 = self._s1 = (d + r1).cross(self._perp)
-        s2 = self._s2 = (r2).cross(self._perp)
-
-        C1 = Vec2(self._perp.dot(d), a2 - a1 - self._reference_angle)
-
-        linear_error = max(linear_error, abs(C1.x))
-        angular_error = abs(C1.y)
-
-        m1 = self._inv_mass_a
-        m2 = self._inv_mass_b
-        i1 = self._inv_Ia
-        i2 = self._inv_Ib
-
-        if active:
-            k11 = m1 + m2 + i1 * (s1 ** 2) + i2 * (s2 ** 2)
-            k12 = i1 * s1 + i2 * s2
-            k13 = i1 * s1 * self._a1 + i2 * s2 * self._a2
-            k22 = i1 + i2
-            if k22 == 0.0:
-                k22 = 1.0
-            k23 = i1 * self._a1 + i2 * self._a2
-            k33 = m1 + m2 + i1 * (self._a1 ** 2) + i2 * (self._a2 ** 2)
-
-            self._k = Mat33((k11, k12, k13), (k12, k22, k23), (k13, k23, k33))
-            C = Vec3(C1.x, C1.y, C2)
-
-            impulse = self._k.solve3x3(-C)
-        else:
-            k11 = m1 + m2 + i1 * s1 * s1 + i2 * s2 * s2
-            k12 = i1 * s1 + i2 * s2
-            k22 = i1 + i2
-            if k22 == 0.0:
-                k22 = 1.0
-
-            self._k.col1 = Vec3(k11, k12, 0.0)
-            self._k.col2 = Vec3(k12, k22, 0.0)
-
-            impulse1 = self._k.solve2x2(-C1)
-            impulse = (impulse1.x, impulse1.y, 0.0)
-
-        ix, iy, iz = impulse
-        P = ix * self._perp + iz * self._axis
-        L1 = ix * s1 + iy + iz * self._a1
-        L2 = ix * s2 + iy + iz * self._a2
-
-        center_a -= self._inv_mass_a * P # modifies ba._sweep.c
-        center_b += self._inv_mass_b * P
-        a1 -= i1 * L1
-        a2 += i2 * L2
-
-        ba._sweep.a = a1
-        bb._sweep.a = a2
-        ba._synchronize_transform()
-        bb._synchronize_transform()
-        return (linear_error <= LINEAR_SLOP) and (angular_error <= ANGULAR_SLOP)
         
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        v1 = ba._linear_velocity # not copied, so modified when v1 modified
-        w1 = ba._angular_velocity
-        v2 = bb._linear_velocity
-        w2 = bb._angular_velocity
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        ra, rb = self._ra, self._rb
+
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
+        a1, a2 = self._a1, self._a2
+        s1, s2 = self._s1, self._s2
+        perp, axis = self._perp, self._axis
 
         # Solve linear motor constraint.
         if self._motor_enabled and self._limit_state != EQUAL_LIMITS:
-            Cdot = self._axis.dot(v2 - v1) + self._a2 * w2 - self._a1 * w1
+            Cdot = self._axis.dot(vb - va) + a2 * wb - a1 * wa
             impulse = self._motor_mass * (self._motor_speed - Cdot)
             old_impulse = self._motor_impulse
             max_impulse = step.dt * self._max_motor_force
@@ -1425,21 +1358,21 @@ class PrismaticJoint(Joint):
             impulse = self._motor_impulse - old_impulse
 
             P = impulse * self._axis
-            L1 = impulse * self._a1
-            L2 = impulse * self._a2
+            L1 = impulse * a1
+            L2 = impulse * a2
 
-            v1 -= self._inv_mass_a * P
-            w1 -= self._inv_Ia * L1
+            va -= ma * P
+            wa -= ia * L1
 
-            v2 += self._inv_mass_b * P
-            w2 += self._inv_Ib * L2
+            vb += mb * P
+            wb += ib * L2
 
-        Cdot1 = Vec2(self._perp.dot(v2 - v1) + self._s2 * w2 - self._s1 * w1, 
-                     w2 - w1)
+        Cdot1 = Vec2(perp.dot(vb - va) + s2 * wb - s1 * wa, 
+                     wb - wa)
 
         if self._limit_enabled and self._limit_state != INACTIVE_LIMIT:
             # Solve prismatic and limit constraint in block form.
-            Cdot2 = self._axis.dot(v2 - v1) + self._a2 * w2 - self._a1 * w1
+            Cdot2 = axis.dot(vb - va) + a2 * wb - a1 * wa
             Cdot = Vec3(Cdot1.x, Cdot1.y, Cdot2)
 
             old_impulse = Vec3(*self._impulse)
@@ -1459,15 +1392,10 @@ class PrismaticJoint(Joint):
 
             df = self._impulse - old_impulse
 
-            P = df.x * self._perp + df.z * self._axis
-            L1 = df.x * self._s1 + df.y + df.z * self._a1
-            L2 = df.x * self._s2 + df.y + df.z * self._a2
+            P = df.x * perp + df.z * axis
+            L1 = df.x * s1 + df.y + df.z * a1
+            L2 = df.x * s2 + df.y + df.z * a2
 
-            v1 -= self._inv_mass_a * P
-            w1 -= self._inv_Ia * L1
-
-            v2 += self._inv_mass_b * P
-            w2 += self._inv_Ib * L2
         else:
             # Limit is inactive, just solve the prismatic constraint in block form.
             df = self._k.solve2x2(-Cdot1)
@@ -1478,17 +1406,112 @@ class PrismaticJoint(Joint):
             L1 = df.x * self._s1 + df.y
             L2 = df.x * self._s2 + df.y
 
-            v1 -= self._inv_mass_a * P
-            w1 -= self._inv_Ia * L1
+        va -= ma * P
+        wa -= ia * L1
 
-            v2 += self._inv_mass_b * P
-            w2 += self._inv_Ib * L2
+        vb += mb * P
+        wb += ib * L2
 
-        ba._angular_velocity = w1
-        bb._angular_velocity = w2
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
+    def _solve_position_constraints(self, step, positions, velocities):
+        """This returns True if the position errors are within tolerance."""
+        ba = self._body_a
+        bb = self._body_b
 
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
+        a1, a2 = self._a1, self._a2
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
+
+        # Compute fresh Jacobians
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+
+        d = cb + rb - ca - ra
+
+        axis = qa * self._local_x_axis
+        a1 = (d + ra).cross(axis)
+        a2 = rb.cross(axis)
+        perp = qa * self._local_y_axis
+
+        s1 = (d + ra).cross(perp)
+        s2 = (rb).cross(perp)
+
+        C1 = Vec2(perp.dot(d), ab - aa - self._reference_angle)
+
+        # Solve linear limit constraint.
+        linear_error, angular_error = abs(C1)
+        active = False
+        C2 = 0.0
+
+        if self._limit_enabled:
+            translation = axis.dot(d)
+            if abs(self._upper_limit - self._lower_limit) < 2.0 * LINEAR_SLOP:
+                # Prevent large angular corrections
+                C2 = clamp(translation, -MAX_LINEAR_CORRECTION, MAX_LINEAR_CORRECTION)
+                linear_error = max(linear_error, translation)
+                active = True
+            elif translation <= self._lower_limit:
+                # Prevent large linear corrections and allow some slop.
+                C2 = clamp(translation - self._lower_limit + LINEAR_SLOP, -MAX_LINEAR_CORRECTION, 0.0)
+                linear_error = max(linear_error, self._lower_limit - translation)
+                active = True
+            elif translation >= self._upper_limit:
+                # Prevent large linear corrections and allow some slop.
+                C2 = clamp(translation - self._upper_limit - LINEAR_SLOP, 0.0, MAX_LINEAR_CORRECTION)
+                linear_error = max(linear_error, translation - self._upper_limit)
+                active = True
+
+        if active:
+            k11 = ma + mb + ia * (s1 ** 2) + ib * (s2 ** 2)
+            k12 = ia * s1 + ib * s2
+            k13 = ia * s1 * a1 + ib * s2 * a2
+            k22 = ia + ib
+            if k22 == 0.0:
+                # For fixed rotation
+                k22 = 1.0
+            k23 = ia * a1 + ib * a2
+            k33 = ma + mb + ia * (a1 ** 2) + ib * (a2 ** 2)
+
+            self._k = Mat33((k11, k12, k13), (k12, k22, k23), (k13, k23, k33))
+            C = Vec3(C1.x, C1.y, C2)
+
+            impulse = self._k.solve3x3(-C)
+        else:
+            k11 = ma + mb + ia * s1 * s1 + ib * s2 * s2
+            k12 = ia * s1 + ib * s2
+            k22 = ia + ib
+            if k22 == 0.0:
+                k22 = 1.0
+
+            self._k.col1 = Vec3(k11, k12, 0.0)
+            self._k.col2 = Vec3(k12, k22, 0.0)
+
+            impulse1 = self._k.solve2x2(-C1)
+            impulse = (impulse1.x, impulse1.y, 0.0)
+
+        ix, iy, iz = impulse
+        P = ix * perp + iz * axis
+        L1 = ix * s1 + iy + iz * a1
+        L2 = ix * s2 + iy + iz * a2
+
+        ca -= ma * P
+        cb += mb * P
+        aa -= ia * L1
+        ab += ib * L2
+
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
+        return (linear_error <= LINEAR_SLOP) and (angular_error <= ANGULAR_SLOP)
+        
 class WeldJoint(Joint):
     """
     A weld joint essentially glues two bodies together. A weld joint may
@@ -1501,18 +1524,17 @@ class WeldJoint(Joint):
     """
     # Point-to-point constraint
     # C = p2 - p1
-    # Cdot = v2 - v1
-    #      = v2 + cross(w2, r2) - v1 - cross(w1, r1)
-    # J = [-I -r1_skew I r2_skew ]
+    # Cdot = vb - va
+    #      = vb + cross(wb, rb) - va - cross(wa, ra)
+    # J = [-I -ra_skew I rb_skew ]
     # Identity used:
     # w k % (rx i + ry j) = w * (-ry i + rx j)
 
     # Angle constraint
     # C = angle2 - angle1 - referenceAngle
-    # Cdot = w2 - w1
+    # Cdot = wb - wa
     # J = [0 0 -1 0 0 1]
-    # K = invI1 + invI2
-
+    # K = invIa + invIb
     def __init__(self, body_a, body_b, anchor=None, reference_angle=None,
                  local_anchor_a=None, local_anchor_b=None,
                  collide_connected=False):
@@ -1545,11 +1567,11 @@ class WeldJoint(Joint):
                          self._collide_connected)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * Vec2(self._impulse.x, self._impulse.y)
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._impulse.z
 
     @property
@@ -1562,68 +1584,86 @@ class WeldJoint(Joint):
         """Get the anchor point on body_b in world coordinates"""
         return self._body_b.get_world_point(self._local_anchor_b)
 
-    def _init_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
+
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
+
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
+
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
         # Compute the effective mass matrix.
-        r_a = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        r_b = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
-        # J = [-I -r1_skew I r2_skew]
+        # J = [-I -ra_skew I rb_skew]
         #     [ 0       -1 0       1]
         # r_skew = [-ry; rx]
 
         # Matlab
-        # K = [ mA+r1y^2*iA+mB+r2y^2*iB,  -r1y*iA*r1x-r2y*iB*r2x,          -r1y*iA-r2y*iB]
-        #     [  -r1y*iA*r1x-r2y*iB*r2x, mA+r1x^2*iA+mB+r2x^2*iB,           r1x*iA+r2x*iB]
-        #     [          -r1y*iA-r2y*iB,           r1x*iA+r2x*iB,                   iA+iB]
+        # K = [ mA+ray^2*iA+mB+rby^2*iB,  -ray*iA*rax-rby*iB*rbx,          -ray*iA-rby*iB]
+        #     [  -ray*iA*rax-rby*iB*rbx, mA+rax^2*iA+mB+rbx^2*iB,           rax*iA+rbx*iB]
+        #     [          -ray*iA-rby*iB,           rax*iA+rbx*iB,                   iA+iB]
 
-        m_a, m_b = ba._inv_mass, bb._inv_mass
-        i_a, i_b = ba._invI, bb._invI
-
-        self._mass.col1.x = m_a + m_b + r_a.y * r_a.y * i_a + r_b.y * r_b.y * i_b
-        self._mass.col2.x = -r_a.y * r_a.x * i_a - r_b.y * r_b.x * i_b
-        self._mass.col3.x = -r_a.y * i_a - r_b.y * i_b
-        self._mass.col1.y = self._mass.col2.x
-        self._mass.col2.y = m_a + m_b + r_a.x * r_a.x * i_a + r_b.x * r_b.x * i_b
-        self._mass.col3.y = r_a.x * i_a + r_b.x * i_b
-        self._mass.col1.z = self._mass.col3.x
-        self._mass.col2.z = self._mass.col3.y
-        self._mass.col3.z = i_a + i_b
+        c2x = -ra.y * ra.x * ia - rb.y * rb.x * ib
+        c3x = -ra.y * ia - rb.y * ib
+        self._mass.col1.x = ma + mb + ra.y * ra.y * ia + rb.y * rb.y * ib
+        self._mass.col2.x = c2x
+        self._mass.col3.x = c3x
+        self._mass.col1.y = c2x
+        self._mass.col2.y = ma + mb + ra.x * ra.x * ia + rb.x * rb.x * ib
+        self._mass.col3.y = ra.x * ia + rb.x * ib
+        self._mass.col1.z = c3x
+        self._mass.col2.z = c3x
+        self._mass.col3.z = ia + ib
 
         if step.warm_starting:
             # Scale impulses to support a variable time step.
             self._impulse *= step.dt_ratio
 
-            P = Vec2(self._impulse.x, self._impulse.y)
+            ix, iy, iz = self._impulse
+            P = Vec2(ix, iy)
 
-            ba._linear_velocity -= m_a * P
-            ba._angular_velocity -= i_a * (r_a.cross(P) + self._impulse.z)
+            va -= ma * P
+            wa -= ia * (ra.cross(P) + iz)
 
-            bb._linear_velocity += m_b * P
-            bb._angular_velocity += i_b * (r_b.cross(P) + self._impulse.z)
+            vb += mb * P
+            wb += ib * (rb.cross(P) + iz)
         else:
             self._impulse.zero()
         
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        v_a = ba._linear_velocity
-        w_a = ba._angular_velocity
-        v_b = bb._linear_velocity
-        w_b = bb._angular_velocity
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
 
-        m_a, m_b = ba._inv_mass, bb._inv_mass
-        i_a, i_b = ba._invI, bb._invI
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
 
-        r_a = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        r_b = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        ra, rb = self._ra, self._rb
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
         # Solve point-to-point constraint
-        Cdot1 = v_b + scalar_cross(w_b, r_b) - v_a - scalar_cross(w_a, r_a)
-        Cdot2 = w_b - w_a
+        Cdot1 = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
+        Cdot2 = wb - wa
         Cdot = Vec3(Cdot1.x, Cdot1.y, Cdot2)
 
         impulse = self._mass.solve3x3(-Cdot)
@@ -1631,66 +1671,63 @@ class WeldJoint(Joint):
 
         P = Vec2(impulse.x, impulse.y)
 
-        v_a -= m_a * P
-        w_a -= i_a * (r_a.cross(P) + impulse.z)
+        va -= ma * P
+        wa -= ia * (ra.cross(P) + impulse.z)
 
-        v_b += m_b * P
-        w_b += i_b * (r_b.cross(P) + impulse.z)
+        vb += mb * P
+        wb += ib * (rb.cross(P) + impulse.z)
 
-        ba._linear_velocity = v_a
-        ba._angular_velocity = w_a
-        bb._linear_velocity = v_b
-        bb._angular_velocity = w_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-    def _solve_position_constraints(self, baumgarte):
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns true if the position errors are within tolerance."""
-        ba = self._body_a
-        bb = self._body_b
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        m_a, m_b = ba._inv_mass, bb._inv_mass
-        i_a, i_b = ba._invI, bb._invI
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        r_a = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        r_b = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
-        C1 = bb._sweep.c + r_b - ba._sweep.c - r_a
-        C2 = bb._sweep.a - ba._sweep.a - self._reference_angle
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
 
-        # Handle large detachment.
+        C1 = cb + rb - ca - ra
+        C2 = ab - aa - self._reference_angle
+
         position_error = C1.length
         angular_error = abs(C2)
-        if position_error > ALLOWED_STRETCH:
-            i_a *= 1.0
-            i_b *= 1.0
 
-        self._mass.col1.x = m_a + m_b + r_a.y * r_a.y * i_a + r_b.y * r_b.y * i_b
-        self._mass.col2.x = -r_a.y * r_a.x * i_a - r_b.y * r_b.x * i_b
-        self._mass.col3.x = -r_a.y * i_a - r_b.y * i_b
-        self._mass.col1.y = self._mass.col2.x
-        self._mass.col2.y = m_a + m_b + r_a.x * r_a.x * i_a + r_b.x * r_b.x * i_b
-        self._mass.col3.y = r_a.x * i_a + r_b.x * i_b
-        self._mass.col1.z = self._mass.col3.x
-        self._mass.col2.z = self._mass.col3.y
-        self._mass.col3.z = i_a + i_b
+        mass = self._mass
+        mass.col1.x = ma + mb + ra.y * ra.y * ia + rb.y * rb.y * ib
+        mass.col2.x = c2x = -ra.y * ra.x * ia - rb.y * rb.x * ib
+        mass.col3.x = c3x = -ra.y * ia - rb.y * ib
+        mass.col1.y = c2x
+        mass.col2.y = ma + mb + ra.x * ra.x * ia + rb.x * rb.x * ib
+        mass.col3.y = c3y = ra.x * ia + rb.x * ib
+        mass.col1.z = c3x
+        mass.col2.z = c3y
+        mass.col3.z = ia + ib
 
         C = Vec3(C1.x, C1.y, C2)
+        impulse = -mass.solve3x3(C)
 
-        impulse = self._mass.solve3x3(-C)
+        ix, iy, iz = impulse
+        P = Vec2(ix, iy)
+        ca -= ma * P
+        aa -= ia * (ra.cross(P) + iz)
 
-        P = Vec2(impulse.x, impulse.y)
+        cb += mb * P
+        ab += ib * (rb.cross(P) + iz)
 
-        ba._sweep.c -= m_a * P
-        ba._sweep.a -= i_a * (r_a.cross(P) + impulse.z)
-
-        bb._sweep.c += m_b * P
-        bb._sweep.a += i_b * (r_b.cross(P) + impulse.z)
-
-        ba._synchronize_transform()
-        bb._synchronize_transform()
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
 
         return position_error <= LINEAR_SLOP and angular_error <= ANGULAR_SLOP
-
-
 
 class RopeJoint(Joint):
     """
@@ -1743,16 +1780,16 @@ class RopeJoint(Joint):
 
     def __copy__(self):
         return RopeJoint(self._body_a, self._body_b, self._local_anchor_a,
-                         self._local_anchorb, self._max_length, 
+                         self._local_anchor_b, self._max_length, 
                          self._collide_connected)
 
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return (inv_dt * self._impulse) * self._u
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return 0.0
 
     @property
@@ -1765,17 +1802,38 @@ class RopeJoint(Joint):
         """(Read-only) Maximum separation/rope length"""
         return self._max_length
 
-    def _init_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
 
-        self._ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        self._rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
+
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
+
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
+
+        # Compute the effective mass matrix.
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
         # Rope axis
-        self._u = bb._sweep.c + self._rb - ba._sweep.c - self._ra
+        u = self._u = cb + rb - ca - ra
 
-        self._length = self._u.length
+        self._length = u.length
 
         C = self._length - self._max_length
         if C > 0.0:
@@ -1784,17 +1842,17 @@ class RopeJoint(Joint):
             self._state = INACTIVE_LIMIT
 
         if self._length > LINEAR_SLOP:
-            self._u *= 1.0 / self._length
+            u *= 1.0 / self._length
         else:
-            self._u.zero()
+            u.zero()
             self._mass = 0.0
             self._impulse = 0.0
             return
 
         # Compute effective mass.
-        cra = self._ra.cross(self._u)
-        crb = self._rb.cross(self._u)
-        inv_mass = ba._inv_mass + ba._invI * cra * cra + bb._inv_mass + bb._invI * crb * crb
+        cra = ra.cross(u)
+        crb = rb.cross(u)
+        inv_mass = ma + ia * cra * cra + mb + ib * crb * crb
 
         if inv_mass != 0.0:
             self._mass = 1.0 / inv_mass
@@ -1806,22 +1864,31 @@ class RopeJoint(Joint):
             self._impulse *= step.dt_ratio
 
             P = self._impulse * self._u
-            ba._linear_velocity -= ba._inv_mass * P
-            ba._angular_velocity -= ba._invI * self._ra.cross(P)
-            bb._linear_velocity += bb._inv_mass * P
-            bb._angular_velocity += bb._invI * self._rb.cross(P)
+            va -= ma * P
+            wa -= ia * self._ra.cross(P)
+            vb += mb * P
+            wb += ib * self._rb.cross(P)
         else:
             self._impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
+
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        ra, rb = self._ra, self._rb
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
         # Cdot = dot(u, v + cross(w, r))
-        v_a = ba._linear_velocity + scalar_cross(ba._angular_velocity, self._ra)
-        v_b = bb._linear_velocity + scalar_cross(bb._angular_velocity, self._rb)
+        vpa = va + scalar_cross(wa, ra)
+        vpb = vb + scalar_cross(wb, rb)
         C = self._length - self._max_length
-        Cdot = self._u.dot(v_b - v_a)
+        Cdot = self._u.dot(vpb - vpa)
 
         # Predictive constraint.
         if C < 0.0:
@@ -1833,21 +1900,31 @@ class RopeJoint(Joint):
         impulse = self._impulse - old_impulse
 
         P = impulse * self._u
-        ba._linear_velocity -= ba._inv_mass * P
-        ba._angular_velocity -= ba._invI * self._ra.cross(P)
-        bb._linear_velocity += bb._inv_mass * P
-        bb._angular_velocity += bb._invI * self._rb.cross(P)
-        
+        va -= ma * P
+        wa -= ia * self._ra.cross(P)
+        vb += mb * P
+        wb += ib * self._rb.cross(P)
+
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
     
-    def _solve_position_constraints(self, baumgarte):
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns true if the position errors are within tolerance."""
-        ba = self._body_a
-        bb = self._body_b
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        ra = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-        rb = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        u = bb._sweep.c + rb - ba._sweep.c - ra
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
+
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
+
+        u = cb + rb - ca - ra
 
         length = u.normalize()
         C = length - self._max_length
@@ -1857,21 +1934,20 @@ class RopeJoint(Joint):
         impulse = -self._mass * C
         P = impulse * u
 
-        ba._sweep.c -= ba._inv_mass * P
-        ba._sweep.a -= ba._invI * ra.cross(P)
-        bb._sweep.c += bb._inv_mass * P
-        bb._sweep.a += bb._invI * rb.cross(P)
+        ca -= ma * P
+        aa -= ia * ra.cross(P)
+        cb += mb * P
+        ab += ib * rb.cross(P)
 
-        ba._synchronize_transform()
-        bb._synchronize_transform()
-
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
         return length - self._max_length < LINEAR_SLOP
 
 
 class WheelJoint(Joint):
     """
     A wheel joint. This joint provides two degrees of freedom: translation
-    along an axis fixed in body1 and rotation in the plane. You can use a
+    along an axis fixed in body_a and rotation in the plane. You can use a
     joint limit to restrict the range of motion and a joint motor to drive
     the rotation or to model rotational friction.
     This joint is designed for vehicle suspensions.
@@ -1943,11 +2019,11 @@ class WheelJoint(Joint):
                           self._local_x_axis, self._collide_connected)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * (self._impulse * self._ay + self._spring_impulse * self._ax)
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return inv_dt * self._motor_impulse
 
     @property
@@ -2038,49 +2114,61 @@ class WheelJoint(Joint):
     def spring_damping_ratio(self, spring_damping_ratio):
         self._spring_damping_ratio = spring_damping_ratio
 
-    def _init_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
 
-        self._local_center_a = ba._sweep.local_center
-        self._local_center_b = bb._sweep.local_center
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
 
-        xf_a = ba._xf
-        xf_b = bb._xf
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
 
-        # Compute the effective masses.
-        ra = xf_a._rotation * (self._local_anchor_a - self._local_center_a)
-        rb = xf_b._rotation * (self._local_anchor_b - self._local_center_b)
-        d = bb._sweep.c + rb - ba._sweep.c - ra
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
 
-        self._inv_mass_a = ba._inv_mass
-        self._inv_i_a = ba._invI
-        self._inv_mass_b = bb._inv_mass
-        self._inv_i_b = bb._invI
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
+
+        # Compute the effective mass matrix.
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
+
+        d = cb + rb - ca - ra
 
         # Point to line constraint
-        self._ay = xf_a._rotation * (self._local_y_axis)
-        self._s_ay = (d + ra).cross(self._ay)
-        self._s_by = rb.cross(self._ay)
+        ay = self._ay = qa * (self._local_y_axis)
+        s_ay = self._s_ay = (d + ra).cross(self._ay)
+        s_by = self._s_by = rb.cross(self._ay)
 
-        self._mass = self._inv_mass_a + self._inv_mass_b + self._inv_i_a * self._s_ay * self._s_ay + self._inv_i_b * self._s_by * self._s_by
+        self._mass = ma + mb + ia * s_ay ** 2 + ib * s_by ** 2
 
         if self._mass > 0.0:
             self._mass = 1.0 / self._mass
 
         # Spring constraint
         self._spring_mass = 0.0
+        self._bias = 0.0
+        self._gamma = 0.0
         if self._frequency > 0.0:
-            self._ax = xf_a._rotation * self._local_x_axis
-            self._s_ax = (d + ra).cross(self._ax)
-            self._s_bx = rb.cross(self._ax)
+            ax = self._ax = qa * self._local_x_axis
+            s_ax = self._s_ax = (d + ra).cross(self._ax)
+            s_bx = self._s_bx = rb.cross(self._ax)
 
-            inv_mass = self._inv_mass_a + self._inv_mass_b + self._inv_i_a * self._s_ax * self._s_ax + self._inv_i_b * self._s_bx * self._s_bx
+            inv_mass = ma + mb + ia * s_ax ** 2 + ib * s_bx ** 2
 
             if inv_mass > 0.0:
                 self._spring_mass = 1.0 / inv_mass
 
-                C = d.dot(self._ax)
+                C = d.dot(ax)
 
                 # Frequency
                 omega = 2.0 * PI * self._frequency
@@ -2091,23 +2179,24 @@ class WheelJoint(Joint):
                 # Spring stiffness
                 k = self._spring_mass * omega * omega
 
+                dt = step.dt
+
                 # magic formulas
-                self._gamma = step.dt * (d + step.dt * k)
+                self._gamma = dt * (d + dt * k)
                 if self._gamma > 0.0:
                     self._gamma = 1.0 / self._gamma
 
-                self._bias = C * step.dt * k * self._gamma
+                self._bias = C * dt * k * self._gamma
 
                 self._spring_mass = inv_mass + self._gamma
                 if self._spring_mass > 0.0:
                     self._spring_mass = 1.0 / self._spring_mass
         else:
             self._spring_impulse = 0.0
-            self._spring_mass = 0.0
 
         # Rotational motor
         if self._motor_enabled:
-            self._motor_mass = self._inv_i_a + self._inv_i_b
+            self._motor_mass = ia + ib
             if self._motor_mass > 0.0:
                 self._motor_mass = 1.0 / self._motor_mass
         else:
@@ -2116,51 +2205,56 @@ class WheelJoint(Joint):
 
         if step.warm_starting:
             # Account for variable time step.
-            self._impulse *= step.dt_ratio
-            self._spring_impulse *= step.dt_ratio
-            self._motor_impulse *= step.dt_ratio
+            dt_ratio = step.dt_ratio
 
-            P = self._impulse * self._ay + self._spring_impulse * self._ax
-            L_a = self._impulse * self._s_ay + self._spring_impulse * self._s_ax + self._motor_impulse
-            L_b = self._impulse * self._s_by + self._spring_impulse * self._s_bx + self._motor_impulse
+            self._impulse *= dt_ratio
+            self._spring_impulse *= dt_ratio
+            self._motor_impulse *= dt_ratio
 
-            ba._linear_velocity -= self._inv_mass_a * P
-            ba._angular_velocity -= self._inv_i_a * L_a
+            P = self._impulse * ay + self._spring_impulse * self._ax
+            La = self._impulse * s_ay + self._spring_impulse * self._s_ax + self._motor_impulse
+            Lb = self._impulse * s_by + self._spring_impulse * self._s_bx + self._motor_impulse
 
-            bb._linear_velocity += self._inv_mass_b * P
-            bb._angular_velocity += self._inv_i_b * L_b
+            va -= ma * P
+            wa -= ia * La
+
+            vb += mb * P
+            wb += ib * Lb
         else:
             self._impulse = 0.0
             self._spring_impulse = 0.0
             self._motor_impulse = 0.0
 
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
 
-        v_a = ba._linear_velocity
-        w_a = ba._angular_velocity
-        v_b = bb._linear_velocity
-        w_b = bb._angular_velocity
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        ra, rb = self._ra, self._rb
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
         # Solve spring constraint
-        Cdot = self._ax.dot(v_b - v_a) + self._s_bx * w_b - self._s_ax * w_a
+        Cdot = self._ax.dot(vb - va) + self._s_bx * wb - self._s_ax * wa
         impulse = -self._spring_mass * (Cdot + self._bias + self._gamma * self._spring_impulse)
         self._spring_impulse += impulse
 
         P = impulse * self._ax
-        L_a = impulse * self._s_ax
-        L_b = impulse * self._s_bx
+        La = impulse * self._s_ax
+        Lb = impulse * self._s_bx
 
-        v_a -= self._inv_mass_a * P
-        w_a -= self._inv_i_a * L_a
+        va -= ma * P
+        wa -= ia * La
 
-        v_b += self._inv_mass_b * P
-        w_b += self._inv_i_b * L_b
+        vb += mb * P
+        wb += ib * Lb
 
         # Solve rotational motor constraint
-        Cdot = w_b - w_a - self._motor_speed
+        Cdot = wb - wa - self._motor_speed
         impulse = -self._motor_mass * Cdot
 
         old_impulse = self._motor_impulse
@@ -2168,57 +2262,52 @@ class WheelJoint(Joint):
         self._motor_impulse = clamp(self._motor_impulse + impulse, -max_impulse, max_impulse)
         impulse = self._motor_impulse - old_impulse
 
-        w_a -= self._inv_i_a * impulse
-        w_b += self._inv_i_b * impulse
+        wa -= ia * impulse
+        wb += ib * impulse
 
         # Solve point to line constraint
-        Cdot = self._ay.dot(v_b - v_a) + self._s_by * w_b - self._s_ay * w_a
+        Cdot = self._ay.dot(vb - va) + self._s_by * wb - self._s_ay * wa
         impulse = self._mass * (-Cdot)
         self._impulse += impulse
 
         P = impulse * self._ay
-        L_a = impulse * self._s_ay
-        L_b = impulse * self._s_by
+        La = impulse * self._s_ay
+        Lb = impulse * self._s_by
 
-        v_a -= self._inv_mass_a * P
-        w_a -= self._inv_i_a * L_a
+        va -= ma * P
+        wa -= ia * La
 
-        v_b += self._inv_mass_b * P
-        w_b += self._inv_i_b * L_b
+        vb += mb * P
+        wb += ib * Lb
 
-        ba._linear_velocity = v_a
-        ba._angular_velocity = w_a
-        bb._linear_velocity = v_b
-        bb._angular_velocity = w_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-    def _solve_position_constraints(self, baumgarte):
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns true if the position errors are within tolerance."""
-        ba = self._body_a
-        bb = self._body_b
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        x_a = ba._sweep.c
-        angle_a = ba._sweep.a
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        x_b = bb._sweep.c
-        angle_b = bb._sweep.a
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
-        R_a = Mat22()
-        R_b = Mat22()
-        R_a.angle = angle_a
-        R_b.angle = angle_b
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
 
-        ra = ba._xf._rotation * (self._local_anchor_a - self._local_center_a)
-        rb = bb._xf._rotation * (self._local_anchor_b - self._local_center_b)
-        d = x_b + rb - x_a - ra
+        d = cb + rb - ca - ra
 
-        ay = R_a * self._local_y_axis
-
+        ay = qa * self._local_y_axis
         s_ay = (d + ra).cross(ay)
         s_by = rb.cross(ay)
 
         C = d.dot(ay)
 
-        k = self._inv_mass_a + self._inv_mass_b + self._inv_i_a * self._s_ay * self._s_ay + self._inv_i_b * self._s_by * self._s_by
+        k = ma + mb + ia * self._s_ay ** 2 + ib * self._s_by ** 2 # TODO: wrong?
 
         if k != 0.0:
             impulse = - C / k
@@ -2226,19 +2315,16 @@ class WheelJoint(Joint):
             impulse = 0.0
 
         P = impulse * ay
-        L_a = impulse * s_ay
-        L_b = impulse * s_by
+        La = impulse * s_ay
+        Lb = impulse * s_by
 
-        x_a -= self._inv_mass_a * P
-        angle_a -= self._inv_i_a * L_a
-        x_b += self._inv_mass_b * P
-        angle_b += self._inv_i_b * L_b
+        ca -= ma * P
+        aa -= ia * La
+        cb += mb * P
+        ab += ib * Lb
 
-        ba._sweep.a = angle_a
-        bb._sweep.a = angle_b
-        ba._synchronize_transform()
-        bb._synchronize_transform()
-
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
         return abs(C) <= LINEAR_SLOP
 
 
@@ -2281,7 +2367,7 @@ class MouseJoint(Joint):
         Joint.__init__(self, None, body, False)
 
         self._target = target
-        self._local_anchor = body.get_local_point(target)
+        self._local_anchor_b = body.get_local_point(target)
         self._max_force = max_force
         self._impulse = Vec2()
         self._frequency = frequency
@@ -2295,11 +2381,11 @@ class MouseJoint(Joint):
                           self._max_force, self._frequency, self._damping_ratio)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * self._impulse
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return 0.0 # inv_dt * 0.0
 
     @property
@@ -2348,9 +2434,18 @@ class MouseJoint(Joint):
     def damping_ratio(self, damping_ratio):
         self._damping_ratio = damping_ratio
 
-    def _init_velocity_constraints(self, step):
-        b = self._body_b
-        mass = b.mass
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body = self._body_b
+        self._index = index_b = body._island_index
+
+        cb, ab = positions[index_b]
+        vb, wb = velocities[index_b]
+        mb = self._inv_mass_b = body._inv_mass
+        ib = self._inv_Ib = body._invI
+        self._local_center_b = body._sweep.local_center
+        qb = Mat22(angle=ab)
+
+        self._mass = mass = body.mass
 
         # Frequency
         omega = 2.0 * PI * self._frequency
@@ -2364,65 +2459,70 @@ class MouseJoint(Joint):
         # magic formulas
         # gamma has units of inverse mass.
         # beta has units of inverse time.
-        assert(d + step.dt * k > EPSILON)
-        self._gamma = step.dt * (d + step.dt * k)
+        dt = step.dt
+
+        assert(d + dt * k > EPSILON)
+        self._gamma = dt * (d + dt * k)
         if self._gamma != 0.0:
             self._gamma = 1.0 / self._gamma
-        self._beta = step.dt * k * self._gamma
+        self._beta = dt * k * self._gamma
 
         # Compute the effective mass matrix.
-        r = b._xf._rotation * (self._local_anchor - b._sweep.local_center)
+        rb = self._rb = qb * (self._local_anchor_b - self._local_center_b)
 
-        # K    = [(1/m1 + 1/m2) * eye(2) - skew(r1) * invI1 * skew(r1) - skew(r2) * invI2 * skew(r2)]
-        #      = [1/m1+1/m2     0    ] + invI1 * [r1.y*r1.y -r1.x*r1.y] + invI2 * [r1.y*r1.y -r1.x*r1.y]
-        #        [    0     1/m1+1/m2]           [-r1.x*r1.y r1.x*r1.x]           [-r1.x*r1.y r1.x*r1.x]
-        inv_mass = b._inv_mass
-        inv_i = b._invI
+        # K    = [(1/ma + 1/mb) * eye(2) - skew(ra) * invIa * skew(ra) - skew(rb) * invIb * skew(rb)]
+        #      = [1/ma+1/mb     0    ] + invIa * [ra.y*ra.y -ra.x*ra.y] + invIb * [ra.y*ra.y -ra.x*ra.y]
+        #        [    0     1/ma+1/mb]           [-ra.x*ra.y ra.x*ra.x]           [-ra.x*ra.y ra.x*ra.x]
 
-        K1 = Mat22()
-        K1._col1.x = inv_mass;	K1._col2.x = 0.0
-        K1._col1.y = 0.0;		K1._col2.y = inv_mass
-
-        K2 = Mat22()
-        K2._col1.x =  inv_i * r.y * r.y;	K2._col2.x = -inv_i * r.x * r.y
-        K2._col1.y = -inv_i * r.x * r.y;	K2._col2.y =  inv_i * r.x * r.x
-
-        K = K1 + K2
-        K._col1.x += self._gamma
-        K._col2.y += self._gamma
+        K = Mat22()
+        K.col1.x = mb + ib * rb.y ** 2 + self._gamma
+        K.col1.y = -ib * rb.x * rb.y
+        K.col2.x = K.col1.y
+        K.col2.y = mb + ib * rb.x ** 2 + self._gamma
 
         self._mass = K.inverse
 
-        self.__c = b._sweep.c + r - self._target
+        self._c = self._beta * (cb + rb - self._target)
 
         # Cheat with some damping
-        b._angular_velocity *= 0.98
+        wb *= 0.98
 
-        # Warm starting.
-        self._impulse *= step.dt_ratio
-        b._linear_velocity += inv_mass * self._impulse
-        b._angular_velocity += inv_i * r.cross(self._impulse)
-        
-    def _solve_velocity_constraints(self, step):
-        b = self._body_b
+        if step.warm_starting:
+            # Warm starting.
+            self._impulse *= step.dt_ratio
+            vb += mb * self._impulse
+            wb += ib * rb.cross(self._impulse)
+        else:
+            self._impulse.zero()
 
-        r = b._xf._rotation * (self._local_anchor - b._sweep.local_center)
+        velocities[index_b] = (vb, wb)
+
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_b = self._index
+
+        cb, ab = positions[index_b]
+        vb, wb = velocities[index_b]
+        mb = self._inv_mass_b
+        ib = self._inv_Ib
+        rb = self._rb
 
         # Cdot = v + cross(w, r)
-        Cdot = b._linear_velocity + scalar_cross(b._angular_velocity, r)
-        impulse = self._mass * (-(Cdot + self._beta * self.__c + self._gamma * self._impulse))
+        Cdot = vb + scalar_cross(wb, rb)
+        impulse = self._mass * (-(Cdot + self._c + self._gamma * self._impulse))
 
         old_impulse = Vec2(*self._impulse)
         self._impulse += impulse
         max_impulse = step.dt * self._max_force
-        if self._impulse.length_squared > max_impulse * max_impulse:
+        if self._impulse.length_squared > max_impulse ** 2:
             self._impulse *= max_impulse / self._impulse.length
         impulse = self._impulse - old_impulse
 
-        b._linear_velocity += b._inv_mass * impulse
-        b._angular_velocity += b._invI * r.cross(impulse)
+        vb += mb * impulse
+        wb += ib * rb.cross(impulse)
     
-    def _solve_position_constraints(self, baumgarte):
+        velocities[index_b] = (vb, wb)
+
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns true if the position errors are within tolerance."""
         return True
 
@@ -2447,10 +2547,10 @@ class PulleyJoint(Joint):
     # C = C0 - (length1 + ratio * length2)
     # u1 = (p1 - s1) / norm(p1 - s1)
     # u2 = (p2 - s2) / norm(p2 - s2)
-    # Cdot = -dot(u1, v1 + cross(w1, r1)) - ratio * dot(u2, v2 + cross(w2, r2))
-    # J = -[u1 cross(r1, u1) ratio * u2  ratio * cross(r2, u2)]
+    # Cdot = -dot(u1, va + cross(wa, ra)) - ratio * dot(u2, vb + cross(wb, rb))
+    # J = -[u1 cross(ra, u1) ratio * u2  ratio * cross(rb, u2)]
     # K = J * invM * JT
-    #   = invMass1 + invI1 * cross(r1, u1)^2 + ratio^2 * (invMass2 + invI2 * cross(r2, u2)^2)
+    #   = invMass1 + invIa * cross(ra, u1)^2 + ratio^2 * (invMass2 + invIb * cross(rb, u2)^2)
     def __init__(self, body_a, body_b, 
                  ground_anchor_a=(0, 0), ground_anchor_b=(0, 0), 
                  anchor_a=(0, 0), anchor_b=(0, 0), ratio=1.0,
@@ -2491,7 +2591,7 @@ class PulleyJoint(Joint):
         self._ratio = ratio
         
         # Effective masses
-        self._pulley_mass = 0.0
+        self._mass = 0.0
 
         # Impulses for accumulation/warm starting.
         self._impulse = 0.0
@@ -2505,11 +2605,11 @@ class PulleyJoint(Joint):
                            self._local_anchor_a, self._local_anchor_b)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * self._impulse * self._u2
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         return 0.0
 
     @property
@@ -2549,144 +2649,169 @@ class PulleyJoint(Joint):
         """The pulley ratio, used to simulate a block-and-tackle."""
         return self._ratio
 
-    def _init_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        body_a, body_b = self._body_a, self._body_b
+        index_a = body_a._island_index
+        index_b = body_b._island_index
+        self._indices = (index_a, index_b)
 
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+        local_center_a = self._local_center_a = body_a._sweep.local_center
+        local_center_b = self._local_center_b = body_b._sweep.local_center
 
-        p1 = b1._sweep.c + r1
-        p2 = b2._sweep.c + r2
+        ma = self._inv_mass_a = body_a._inv_mass
+        mb = self._inv_mass_b = body_b._inv_mass
 
-        s1 = self._ground_anchor_a
-        s2 = self._ground_anchor_b
+        ia = self._inv_Ia = body_a._invI
+        ib = self._inv_Ib = body_b._invI
+
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
+
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
+
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
+
+        # Compute the effective mass matrix.
+        ra = self._ra = qa * (self._local_anchor_a - local_center_a)
+        rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
         # Get the pulley axes.
-        self._u1 = p1 - s1
-        self._u2 = p2 - s2
+        ua = self._ua = ca + ra - self._ground_anchor_a
+        ub = self._ub = cb + rb - self._ground_anchor_b
 
-        length1 = self._u1.length
-        length2 = self._u2.length
+        length_a = ua.length
+        length_b = ub.length
 
-        if length1 > 10.0 * LINEAR_SLOP:
-            self._u1 *= 1.0 / length1
+        if length_a > 10.0 * LINEAR_SLOP:
+            self._ua *= 1.0 / length_a
         else:
-            self._u1.zero()
+            self._ua.zero()
 
-        if length2 > 10.0 * LINEAR_SLOP:
-            self._u2 *= 1.0 / length2
+        if length_b > 10.0 * LINEAR_SLOP:
+            self._ub *= 1.0 / length_b
         else:
-            self._u2.zero()
+            self._ub.zero()
 
         # Compute effective mass.
-        cr1u1 = r1.cross(self._u1)
-        cr2u2 = r2.cross(self._u2)
+        rua = ra.cross(self._ua)
+        rub = rb.cross(self._ub)
 
-        m1 = b1._inv_mass + b1._invI * cr1u1 * cr1u1
-        m2 = b2._inv_mass + b2._invI * cr2u2 * cr2u2
+        ma = ma + ia * rua ** 2
+        mb = mb + ib * rub ** 2
 
-        self._pulley_mass = m1 + self._ratio * self._ratio * m2
+        self._mass = ma + self._ratio * self._ratio * mb
 
-        if self._pulley_mass > 0.0:
-            self._pulley_mass = 1.0 / self._pulley_mass
+        if self._mass > 0.0:
+            self._mass = 1.0 / self._mass
 
         if step.warm_starting:
             # Scale impulses to support variable time steps.
             self._impulse *= step.dt_ratio
 
             # Warm starting.
-            P1 = -(self._impulse) * self._u1
-            P2 = (-self._ratio * self._impulse) * self._u2
-            b1._linear_velocity += b1._inv_mass * P1
-            b1._angular_velocity += b1._invI * r1.cross(P1)
-            b2._linear_velocity += b2._inv_mass * P2
-            b2._angular_velocity += b2._invI * r2.cross(P2)
+            Pa = -(self._impulse) * ua
+            Pb = (-self._ratio * self._impulse) * ub
+            va += ma * Pa
+            wa += ia * ra.cross(Pa)
+            vb += mb * Pb
+            wb += ib * rb.cross(Pb)
         else:
             self._impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        b1 = self._body_a
-        b2 = self._body_b
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
 
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        index_a, index_b = self._indices
 
-        v1 = b1._linear_velocity + scalar_cross(b1._angular_velocity, r1)
-        v2 = b2._linear_velocity + scalar_cross(b2._angular_velocity, r2)
+        va, wa = velocities[index_a]
+        vb, wb = velocities[index_b]
 
-        Cdot = -self._u1.dot(v1) - self._ratio * self._u2.dot(v2)
-        impulse = self._pulley_mass * (-Cdot)
+        ra, rb = self._ra, self._rb
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
+        ua, ub = self._ua, self._ub
+
+        vpa = va + scalar_cross(wa, ra)
+        vpb = vb + scalar_cross(wb, rb)
+
+        Cdot = -ua.dot(vpa) - self._ratio * ub.dot(vpb)
+        impulse = -self._mass * Cdot
         self._impulse += impulse
 
-        P1 = -impulse * self._u1
-        P2 = -self._ratio * impulse * self._u2
-        b1._linear_velocity += b1._inv_mass * P1
-        b1._angular_velocity += b1._invI * r1.cross(P1)
-        b2._linear_velocity += b2._inv_mass * P2
-        b2._angular_velocity += b2._invI * r2.cross(P2)
+        Pa = -impulse * ua
+        Pb = -self._ratio * impulse * ub
+        va += ma * Pa
+        wa += ia * ra.cross(Pa)
+        vb += mb * Pb
+        wb += ib * rb.cross(Pb)
 
-    def _solve_position_constraints(self, baumgarte):
+        velocities[index_a] = (va, wa)
+        velocities[index_b] = (vb, wb)
+
+    def _solve_position_constraints(self, step, positions, velocities):
         """This returns true if the position errors are within tolerance."""
-        b1 = self._body_a
-        b2 = self._body_b
+        index_a, index_b = self._indices
+        ca, aa = positions[index_a]
+        cb, ab = positions[index_b]
 
-        s1 = self._ground_anchor_a
-        s2 = self._ground_anchor_b
+        qa = Mat22(angle=aa)
+        qb = Mat22(angle=ab)
 
-        r1 = b1._xf._rotation * (self._local_anchor_a - b1._sweep.local_center)
-        r2 = b2._xf._rotation * (self._local_anchor_b - b2._sweep.local_center)
+        ma, mb = self._inv_mass_a, self._inv_mass_b
+        ia, ib = self._inv_Ia, self._inv_Ib
 
-        p1 = b1._sweep.c + r1
-        p2 = b2._sweep.c + r2
+        # Compute the effective mass matrix.
+        ra = qa * (self._local_anchor_a - self._local_center_a)
+        rb = qb * (self._local_anchor_b - self._local_center_b)
 
         # Get the pulley axes.
-        u1 = p1 - s1
-        u2 = p2 - s2
+        ua = ca + ra - self._ground_anchor_a
+        ub = cb + rb - self._ground_anchor_b
 
-        length1 = u1.length
-        length2 = u2.length
+        length_a = ua.length
+        length_b = ub.length
 
-        if length1 > 10.0 * LINEAR_SLOP:
-            u1 *= 1.0 / length1
+        if length_a > 10.0 * LINEAR_SLOP:
+            ua *= 1.0 / length_a
         else:
-            u1.zero()
+            ua.zero()
 
-        if length2 > 10.0 * LINEAR_SLOP:
-            u2 *= 1.0 / length2
+        if length_b > 10.0 * LINEAR_SLOP:
+            ub *= 1.0 / length_b
         else:
-            u2.zero()
+            ub.zero()
 
         # Compute effective mass.
-        cr1u1 = r1.cross(u1)
-        cr2u2 = r2.cross(u2)
+        rua = ra.cross(ua)
+        rub = rb.cross(ub)
 
-        m1 = b1._inv_mass + b1._invI * cr1u1 * cr1u1
-        m2 = b2._inv_mass + b2._invI * cr2u2 * cr2u2
-
-        mass = m1 + self._ratio * self._ratio * m2
+        ma = ma + ia * rua ** 2
+        mb = mb + ib * rub ** 2
+        mass = ma + self._ratio ** 2 * mb
 
         if mass > 0.0:
             mass = 1.0 / mass
 
-        C = self._constant - length1 - self._ratio * length2
+        C = self._constant - length_a - self._ratio * length_b
         linear_error = abs(C)
 
         impulse = -mass * C
 
-        P1 = -impulse * u1
-        P2 = -self._ratio * impulse * u2
+        Pa = -impulse * ua
+        Pb = -self._ratio * impulse * ub
 
-        b1._sweep.c += b1._inv_mass * P1
-        b1._sweep.a += b1._invI * r1.cross(P1)
-        b2._sweep.c += b2._inv_mass * P2
-        b2._sweep.a += b2._invI * r2.cross(P2)
+        ca += ma * Pa
+        aa += ia * ra.cross(Pa)
+        cb += mb * Pb
+        ab += ib * rb.cross(Pb)
 
-        b1._synchronize_transform()
-        b2._synchronize_transform()
+        positions[index_a] = (ca, aa)
+        positions[index_b] = (cb, ab)
 
         return linear_error < LINEAR_SLOP
-
 
 
 class GearJoint(Joint):
@@ -2711,7 +2836,7 @@ class GearJoint(Joint):
     # Cdot = -(Cdot1 + ratio * Cdot2)
     # J = -[J1 ratio * J2]
     # K = J * invM * JT
-    #   = J1 * invM1 * J1T + ratio * ratio * J2 * invM2 * J2T
+    #   = J1 * invMa * J1T + ratio * ratio * J2 * invMb * J2T
     #
     # Revolute:
     # coordinate = rotation
@@ -2732,34 +2857,61 @@ class GearJoint(Joint):
         if not isinstance(joint_b, (RevoluteJoint, PrismaticJoint)):
             raise ValueError('Joints must be either Revolute or Prismatic')
 
-        self._revolute_a = None
-        self._revolute_b = None
-        self._prismatic_a = None
-        self._prismatic_b = None
-
         self._joint_a = joint_a
         self._joint_b = joint_b
 
-        self._ground_a = joint_a.body_a
-        self._body_a = joint_a.body_b
-        if isinstance(joint_a, RevoluteJoint):
-            self._revolute_a = joint_a
-            coordinate_a = joint_a.joint_angle
-        else:
-            self._prismatic_a = joint_a
-            coordinate_a = joint_a.joint_translation
+        # Get geometry of joint_a
+        body_a = self._body_a = joint_a.body_b
+        body_c = self._body_c = joint_a.body_a
 
-        self._ground_anchor_a = Vec2(*joint_a._local_anchor_a)
-        self._local_anchor_a = Vec2(*joint_a._local_anchor_b)
-    
-        self._ground_b = joint_a.body_a
-        self._body_b = joint_a.body_b
-        if isinstance(joint_b, RevoluteJoint):
-            self._revolute_b = joint_b
-            coordinate_b = joint_b.joint_angle
+        xf_a, xf_c = body_a._xf, body_c._xf
+        aa, ac = body_a._sweep.a, body_c._sweep.a
+
+        self._revolute_a = isinstance(joint_a, RevoluteJoint)
+        if self._revolute_a:
+            revolute = joint_a
+            self._local_anchor_c = Vec2(*revolute._local_anchor_a)
+            self._local_anchor_a = Vec2(*revolute._local_anchor_b)
+            self._reference_angle_a = revolute._reference_angle
+            self._local_axis_c = Vec2()
+
+            coordinate_a = aa - ac - self._reference_angle_a
         else:
-            self._prismatic_b = joint_b
-            coordinate_b = joint_b.joint_translation
+            prismatic = joint_a
+            self._local_anchor_c = Vec2(*prismatic._local_anchor_a)
+            self._local_anchor_a = Vec2(*prismatic._local_anchor_b)
+            self._reference_angle_a = prismatic._reference_angle
+            self._local_axis_c = Vec2(*prismatic._local_x_axis)
+            
+            pc = self._local_anchor_c
+            pa = xf_c.rotation.mul_t(xf_a.rotation * self._local_anchor_a + (xf_a.position - xf_c.position))
+            coordinate_a = (pa - pc).dot(self._local_axis_c)
+
+        # Get geometry of joint_b
+        body_d = self._body_d = joint_a.body_a
+        body_b = self._body_b = joint_a.body_b
+
+        xf_b, xf_d = body_b._xf, body_d._xf
+        ab, ad = body_b._sweep.a, body_d._sweep.a
+        self._revolute_b = isinstance(joint_b, RevoluteJoint)
+        if self._revolute_b:
+            revolute = joint_b
+            self._local_anchor_d = Vec2(*revolute._local_anchor_a)
+            self._local_anchor_b = Vec2(*revolute._local_anchor_b)
+            self._reference_angle_b = revolute._reference_angle
+            self._local_axis_d = Vec2()
+
+            coordinate_b = ab - ad - self._reference_angle_b
+        else:
+            prismatic = joint_b
+            self._local_anchor_d = Vec2(*prismatic._local_anchor_a)
+            self._local_anchor_b = Vec2(*prismatic._local_anchor_b)
+            self._reference_angle_b = prismatic._reference_angle
+            self._local_axis_d = Vec2(*prismatic._local_x_axis)
+            
+            pd = self._local_anchor_d
+            pb = xf_d.rotation.mul_t(xf_b.rotation * self._local_anchor_b + (xf_b.position - xf_d.position))
+            coordinate_b = (pb - pd).dot(self._local_axis_d)
 
         self._ground_anchor_b = Vec2(*joint_b._local_anchor_a)
         self._local_anchor_b = Vec2(*joint_b._local_anchor_b)
@@ -2767,17 +2919,17 @@ class GearJoint(Joint):
         self._ratio = ratio
         self._constant = coordinate_a + self._ratio * coordinate_b
         self._impulse = 0.0
-        self._j = Jacobian()
+        self._bodies = (self._body_a, self._body_b, self._body_c, self._body_d)
 
     def __copy__(self):
         return GearJoint(self._joint_a, self._joint_b, self._ratio)
 
     def get_reaction_force(self, inv_dt):
-        """Get the reaction force on body2 at the joint anchor in Newtons."""
+        """Get the reaction force on body_b at the joint anchor in Newtons."""
         return inv_dt * (self._impulse * self._j.linear_b) # TODO_ERIN not tested
 
     def get_reaction_torque(self, inv_dt):
-        """Get the reaction torque on body2 in N*m."""
+        """Get the reaction torque on body_b in N*m."""
         r = self._body_b._xf._rotation * (self._local_anchor_b - self._body_b._sweep.local_center)
         P = self._impulse * self._j.linear_b
         L = self._impulse * self._j.angular_b - r.cross(P)
@@ -2827,90 +2979,180 @@ class GearJoint(Joint):
         """The world anchor point relative to body_b's origin."""
         return self._body_b.get_world_point(self._local_anchor_b)
 
-    def _init_velocity_constraints(self, step):
-        g1 = self._ground_a
-        g2 = self._ground_b
-        ba = self._body_a
-        bb = self._body_b
+    def _init_velocity_constraints(self, step, positions, velocities):
+        bodies = self._bodies
+        self._indices = [body._island_index for body in bodies]
+        self._local_centers = [body._sweep.local_center for body in bodies]
+        self._masses = [body._inv_mass for body in bodies]
+        self._inertias = [body._invI for body in bodies]
 
-        K = 0.0
-        self._j.zero()
+        index_a, index_b, index_c, index_d = indices = self._indices
+        Cs = self._centers = [positions[index][0] for index in indices]
+        As = self._angles = [positions[index][1] for index in indices]
 
-        if self._revolute_a is not None:
-            self._j.angular_a = -1.0
-            K += ba._invI
+        Vs = self._lin_vels = [velocities[index][0] for index in indices]
+        Ws = self._ang_vels = [velocities[index][1] for index in indices]
+      
+        Qs = [Mat22(angle=a) for a in As]
+
+        ca, cb, cc, cd = Cs
+        aa, ab, ac, ad = As
+        ia, ib, ic, id_ = self._inertias
+        ma, mb, mc, md = self._masses
+        qa, qb, qc, qd = Qs
+        lca, lcb, lcc, lcd = self._local_centers
+
+        self._mass = 0.0
+
+        if self._revolute_a:
+            self._j_vac = Vec2()
+            self._j_wa = 1.0
+            self._j_wc = 1.0
+            self._mass += ia + ic
         else:
-            ug = g1._xf._rotation * self._prismatic_a._local_x_axis
-            r = ba._xf._rotation * (self._local_anchor_a - ba._sweep.local_center)
-            crug = r.cross(ug)
-            self._j.linear_a = -ug
-            self._j.angular_a = -crug
-            K += ba._inv_mass + ba._invI * (crug ** 2)
+            u = qc * self._local_axis_c
+            rc = qc * (self._local_anchor_c - lcc)
+            ra = qa * (self._local_anchor_a - lca)
+            self._j_vac = u
+            self._j_wc = rc.cross(u)
+            self._j_wa = ra.cross(u)
+            self._mass += mc + ma + ic * self._j_wc * self._j_wc + ia * self._j_wa * self._j_wa
 
-        if self._revolute_b is not None:
-            self._j.angular_b = -self._ratio
-            K += (self._ratio ** 2) * bb._invI
+        if self._revolute_b:
+            self._j_vbd = Vec2()
+            self._j_wb = 1.0
+            self._j_wd = 1.0
+            self._mass += self._ratio**2 * (ib + id_)
         else:
-            ug = g2._xf._rotation * self._prismatic_b._local_x_axis
-            r = bb._xf._rotation * (self._local_anchor_b - bb._sweep.local_center)
-            crug = r.cross(ug)
-            self._j.linear_b = -self._ratio * ug
-            self._j.angular_b = -self._ratio * crug
-            K += self._ratio * self._ratio * (bb._inv_mass + bb._invI * (crug ** 2))
+            u = qd * self._local_axis_d
+            rd = qd * (self._local_anchor_d - lcd)
+            rb = qb * (self._local_anchor_b - lcb)
+            self._j_vbd = u
+            self._j_wd = rd.cross(u)
+            self._j_wb = rb.cross(u)
+            self._mass += self._ratio**2 * (md + mb) + id_ * self._j_wd ** 2 + ib * self._j_wb * self._j_wb
 
         # Compute effective mass.
-        if K > 0.0:
-            self._mass = 1.0 / K
+        if self._mass > 0.0:
+            self._mass = 1.0 / self._mass
         else:
             self._mass = 0.0
 
+        # Linear velocity Jacobian values corresponding to lin vel a~d
+        self._lv_j_values = lv_j_values = [self._j_vac, self._j_vbd] * 2
+
+        # Angular velocity Jacobian values corresponding to ang vel a~d
+        self._av_j_values = av_j_values = [self._j_wa, self._j_wb, self._j_wc, self._j_wd]
+
         if step.warm_starting:
             # Warm starting.
-            ba._linear_velocity += ba._inv_mass * self._impulse * self._j.linear_a
-            ba._angular_velocity += ba._invI * self._impulse * self._j.angular_a
-            bb._linear_velocity += bb._inv_mass * self._impulse * self._j.linear_b
-            bb._angular_velocity += bb._invI * self._impulse * self._j.angular_b
+            impulse = self._impulse
+            for k, (i, m, lvj, avj) in enumerate(zip(self._inertias, self._masses, lv_j_values, av_j_values)):
+                Vs[k] += (m * impulse) * lvj
+                Ws[k] += (i * impulse) * avj
+
+            #Vs[0] += (ma * impulse) * self._j_vac
+            #Ws[0] += ia * impulse * self._j_wa
+
+            #Vs[1] += (mb * impulse) * self._j_vbd
+            #Ws[1] += ib * impulse * self._j_wb
+
+            #Vs[2] -= (mc * impulse) * self._j_vac
+            #Ws[2] -= ic * impulse * self._j_wc
+
+            #Vs[3] -= (md * impulse) * self._j_vbd
+            #Ws[3] -= id_ * impulse * self._j_wd
         else:
             self._impulse = 0.0
 
-    def _solve_velocity_constraints(self, step):
-        ba = self._body_a
-        bb = self._body_b
+        for index, v, w in zip(self._indices, Vs, Ws):
+            velocities[index] = (v, w)
 
-        Cdot = self._j.compute(ba._linear_velocity, ba._angular_velocity,
-                               bb._linear_velocity, bb._angular_velocity)
+    def _solve_velocity_constraints(self, step, positions, velocities):
+        indices = self._indices
+        Vs = self._lin_vels
+        Ws = self._ang_vels = [velocities[index][1] for index in indices]
 
-        impulse = self._mass * (-Cdot)
+        va, vb, vc, vd = Vs
+        wa, wb, wc, wd = Ws
+
+        Cdot = self._j_vac.dot(va - vc) + self._j_vbd.dot(vb - vd)
+        Cdot += (self._j_wa * wa - self._j_wc * wc) + (self._j_wb * wb - self._j_wd * wd)
+
+        impulse = -self._mass * Cdot
         self._impulse += impulse
 
-        ba._linear_velocity += ba._inv_mass * impulse * self._j.linear_a
-        ba._angular_velocity += ba._invI * impulse * self._j.angular_a
-        bb._linear_velocity += bb._inv_mass * impulse * self._j.linear_b
-        bb._angular_velocity += bb._invI * impulse * self._j.angular_b
+        for k, (i, m, lvj, avj) in enumerate(zip(self._inertias, self._masses, self._lv_j_values, self._av_j_values)):
+            Vs[k] += (m * impulse) * lvj
+            Ws[k] += (i * impulse) * avj
 
-    def _solve_position_constraints(self, baumgarte):
-        ba = self._body_a
-        bb = self._body_b
+        for index, v, w in zip(self._indices, Vs, Ws):
+            velocities[index] = (v, w)
 
-        if self._revolute_a is not None:
-            coordinate1 = self._revolute_a.joint_angle
+    def _solve_position_constraints(self, step, positions, velocities):
+        indices = self._indices
+        ratio = self._ratio
+        Cs = self._centers
+        As = self._angles
+
+        Qs = [Mat22(angle=a) for a in As]
+        qa, qb, qc, qd = Qs
+        ca, cb, cc, cd = Cs
+        aa, ab, ac, ad = As
+
+        ia, ib, ic, id_ = self._inertias
+        ma, mb, mc, md = self._masses
+        lca, lcb, lcc, lcd = self._local_centers
+
+        mass = 0.0
+        if self._revolute_a:
+            j_vac = Vec2()
+            j_wa = 1.0
+            j_wc = 1.0
+            mass += ia + ic
+            coordinate_a = aa - ac - self._reference_angle_a
         else:
-            coordinate1 = self._prismatic_a.joint_translation
+            u = qc * self._local_axis_c
+            rc = qc * (self._local_anchor_c - lcc)
+            ra = qa * (self._local_anchor_a - lca)
+            j_vac = u
+            j_wc = rc.cross(u)
+            j_wa = ra.cross(u)
+            mass += mc + ma + ic * j_wc ** 2 + ia * j_wa ** 2
 
-        if self._revolute_b is not None:
-            coordinate2 = self._revolute_b.joint_angle
+            pc = self._local_anchor_c - lcc
+            pa = qc.mul_t(ra + (ca - cc))
+            coordinate_a = (pa - pc).dot(self._local_axis_c)
+
+        if self._revolute_b:
+            j_vbd = Vec2()
+            j_wb = 1.0
+            j_wd = 1.0
+            mass += ib + id_
+
+            coordinate_b = ab - ad - self._reference_angle_b
         else:
-            coordinate2 = self._prismatic_b.joint_translation
+            u = qd * self._local_axis_d
+            rd = qd * (self._local_anchor_d - lcd)
+            rb = qb * (self._local_anchor_b - lcb)
+            j_vbd = ratio * u
+            j_wd = ratio * rd.cross(u)
+            j_wb = ratio * rb.cross(u)
+            mass += ratio**2 * (md + mb) + id_ * j_wd ** 2 + ib * j_wb ** 2
 
-        C = self._constant - (coordinate1 + self._ratio * coordinate2)
+            pd = self._local_anchor_d - lcd
+            pb = qd.mul_t(rb + (cb - cd))
+            coordinate_b = (pb - pd).dot(self._local_axis_d)
 
-        impulse = self._mass * (-C)
+        C = (coordinate_a + ratio * coordinate_b) - self._constant
+        impulse = 0.0
+        if mass > 0.0:
+            impulse = -C / mass
 
-        ba._sweep.c += ba._inv_mass * impulse * self._j.linear_a
-        ba._sweep.a += ba._invI * impulse * self._j.angular_a
-        bb._sweep.c += bb._inv_mass * impulse * self._j.linear_b
-        bb._sweep.a += bb._invI * impulse * self._j.angular_b
-
-        ba._synchronize_transform()
-        bb._synchronize_transform()
+            Jcs = [j_vac, j_vbd] * 2
+            Jas = [j_wa, j_wb, j_wc, j_wd]
+            for k, (i, m, jc, ja) in enumerate(zip(indices, self._masses, Jcs, Jas)):
+                c, a = positions[i]
+                positions[i] = (c + m * impulse * jc, a + i * impulse * ja)
+        
         return True # linear_error < LINEAR_SLOP # TODO_ERIN not implemented

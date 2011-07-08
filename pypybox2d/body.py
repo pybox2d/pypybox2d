@@ -28,6 +28,7 @@ __date__ = "$Date$"
 from copy import copy
 from .common import (LockedError, Vec2, Transform, Sweep, scalar_cross, is_valid_float, property)
 from .fixture import Fixture
+from .shapes import MassData
 from . import shapes
 
 class Body(object):
@@ -40,7 +41,7 @@ class Body(object):
     __slots__=[
         '_xf', '_sweep', '_force', '_torque', '_I', '_invI', '_sleep_time', '_contacts',
         'fixtures', 'joints', '_world', '_linear_velocity', '_angular_velocity', '_linear_damping', '_angular_damping',
-        '_gravity_scale', '_island_flag', '_awake', '_allow_sleep', '_fixed_rotation', '_bullet', '_type',
+        '_gravity_scale', '_island_flag', '_island_index', '_awake', '_allow_sleep', '_fixed_rotation', '_bullet', '_type',
         '_active', '_sweep', '_mass', '_inv_mass', 'user_data', '__weakref__', ]
 
     def __init__(self, world=None, position=(0,0), angle=0.0, linear_velocity=(0,0),
@@ -88,6 +89,7 @@ class Body(object):
         self._angular_damping = float(angular_damping)
         self._gravity_scale = float(gravity_scale)
         self._island_flag = False
+        self._island_index = None # throws error if not set
         self._awake = awake
         self._allow_sleep = bool(allow_sleep)
         self._fixed_rotation = bool(fixed_rotation)
@@ -358,7 +360,7 @@ fixtures=%s)""" % info
             raise LockedError
 
         if isinstance(position_angle, Transform):
-            transform = copy(position)
+            transform = copy(position_angle)
         else:
             transform = Transform(position=position_angle[0], angle=position_angle[1])
 
@@ -386,7 +388,7 @@ fixtures=%s)""" % info
     @property
     def position(self):
         """The world body origin"""
-        return self._xf.position
+        return Vec2(*self._xf.position)
 
     @position.setter
     def position(self, pos):
@@ -396,7 +398,7 @@ fixtures=%s)""" % info
     @property
     def angle(self):
         """The world rotation angle in radians"""
-        return self._sweep.a
+        return self._xf.angle
 
     @angle.setter
     def angle(self, angle):
@@ -887,9 +889,12 @@ fixtures=%s)""" % info
         return True
 
     def _advance(self, alpha):
+        """Advance to the new safe time. This doesn't sync the broad-phase."""
         self._sweep.advance(alpha)
-        self._sweep.c = copy(self._sweep.c0)
-        self._sweep.a = copy(self._sweep.a0)
-        self._synchronize_transform()
+        center = self._sweep.c = copy(self._sweep.c0)
+        angle = self._sweep.a = self._sweep.a0
+
+        self._xf._rotation.angle = angle
+        self._xf.position = center - self._xf._rotation * self._sweep.local_center
 
 

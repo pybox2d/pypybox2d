@@ -31,10 +31,11 @@ from . import shapes
 from . import distance
 from . import settings
 from . import collision
-from .common import (Vec2, Mat22, scalar_cross, clamp, distance_squared, property)
+from .common import (Vec2, Mat22, scalar_cross, clamp, Transform, property)
 from .contact_util import (mix_friction, mix_restitution, 
                            Manifold, WorldManifold, 
-                           ContactRegister, ContactConstraint)
+                           ContactRegister, ContactVelocityConstraint,
+                           ContactPositionConstraint, VelocityConstraintPoint)
 
 EPSILON = settings.EPSILON
 EPSILON_SQR = settings.EPSILON_SQR
@@ -42,6 +43,8 @@ VELOCITY_THRESHOLD = settings.VELOCITY_THRESHOLD
 DEBUG_SOLVER = settings.DEBUG_SOLVER
 LINEAR_SLOP = settings.LINEAR_SLOP
 MAX_LINEAR_CORRECTION = settings.MAX_LINEAR_CORRECTION
+TOI_BAUMGARTE = settings.TOI_BAUMGARTE
+BAUMGARTE = settings.BAUMGARTE
 
 class Contact(object):
     """
@@ -370,169 +373,226 @@ class Contact(object):
             manifold, edge, xf_a, self._fixture_b.shape, xf_b)
 
 class ContactSolver(object):
-    def __init__(self, contacts, impulse_ratio, warm_starting):
+    def __init__(self, step, contacts, positions, velocities):
+        self.step = step
+        self.positions = positions
+        self.velocities = velocities
+        self.velocity_constraints = []
+        self.position_constraints = []
+
         # Initialize position independent portions of the constraints.
-        self.constraints = [ContactConstraint(c, impulse_ratio, warm_starting)
-                                for c in contacts]
-
-    def initialize_velocity_constraints(self):
-        for cc in self.constraints:
-            radius_a = cc.radius_a
-            radius_b = cc.radius_b
-            body_a = cc.body_a
-            body_b = cc.body_b
-            manifold = cc.manifold
-
-            va = body_a._linear_velocity
-            vb = body_b._linear_velocity
-            wa = body_a._angular_velocity
-            wb = body_b._angular_velocity
-
+        for contact in contacts:
+            manifold = contact._manifold
             assert(manifold.point_count > 0)
 
-            world_manifold = WorldManifold(manifold, body_a._xf, radius_a, body_b._xf, radius_b)
-            cc.normal = copy(world_manifold.normal)
+            fixture_a = contact._fixture_a
+            fixture_b = contact._fixture_b
 
-            for ccp, wmp in zip(cc.points, world_manifold.points):
-                ccp.ra = wmp - body_a._sweep.c
-                ccp.rb = wmp - body_b._sweep.c
+            shape_a = fixture_a._shape
+            shape_b = fixture_b._shape
+            
+            radius_a = shape_a.radius
+            radius_b = shape_b.radius
+            
+            body_a = fixture_a._body
+            body_b = fixture_b._body
+            
+            vc = ContactVelocityConstraint(contact, body_a, body_b)
+            self.velocity_constraints.append(vc)
+
+            pc = ContactPositionConstraint(body_a, body_b, radius_a, radius_b,
+                                           manifold)
+            self.position_constraints.append(pc)
+           
+            vcps = [VelocityConstraintPoint(step, mp.normal_impulse,
+                                             mp.tangent_impulse)
+                                    for mp in manifold.used_points]
+           
+            vc.points = vcps
+            pc.local_points = [Vec2(*mp.local_point) for mp in manifold.used_points]
+
+    def initialize_velocity_constraints(self):
+        positions = self.positions
+        velocities = self.velocities
+        for vc, pc in zip(self.velocity_constraints, self.position_constraints):
+            radius_a, radius_b = pc.radii
+            manifold = vc.contact.manifold
+            index_a, index_b = vc.indices
+
+            m_a, m_b = vc.inv_mass
+            i_a, i_b = vc.inv_i
+            local_center_a, local_center_b = pc.local_centers
+            
+            c_a, a_a = positions[index_a] # center, angle
+            c_b, a_b = positions[index_b]
+            va, wa = velocities[index_a] # linear vel, angular vel
+            vb, wb = velocities[index_b]
+
+            assert(manifold.point_count > 0)
+            
+            xf_a = Transform(angle=a_a)
+            xf_b = Transform(angle=a_b)
+            xf_a.position = c_a - xf_a._rotation * local_center_a
+            xf_b.position = c_b - xf_b._rotation * local_center_b
+
+            world_manifold = WorldManifold(manifold, xf_a, radius_a, xf_b, radius_b)
+            vc.normal = copy(world_manifold.normal)
+
+            for vcp, wmp in zip(vc.points, world_manifold.points):
+                ra, rb = vcp.r = (wmp - c_a, wmp - c_b)
+               
+                rn_a = ra.cross(vc.normal) ** 2
+                rn_b = rb.cross(vc.normal) ** 2
                 
-                rn_a = ccp.ra.cross(cc.normal) ** 2
-                rn_b = ccp.rb.cross(cc.normal) ** 2
-                
-                k_normal = body_a._inv_mass + body_b._inv_mass + body_a._invI * rn_a + body_b._invI * rn_b
+                k_normal = m_a + m_b + i_a * rn_a + i_b * rn_b
 
-                assert(k_normal > EPSILON)
+                if k_normal > 0.0:
+                    vcp.normal_mass = 1.0 / k_normal
+                else:
+                    vcp.normal_mass = 0.0
 
-                ccp.normal_mass = 1.0 / k_normal
-                tangent = cc.normal.cross(1.0)
+                tangent = vc.normal.cross(1.0)
 
-                rt_a = ccp.ra.cross(tangent) ** 2
-                rt_b = ccp.rb.cross(tangent) ** 2
+                rt_a = ra.cross(tangent) ** 2
+                rt_b = rb.cross(tangent) ** 2
 
-                k_tangent = body_a._inv_mass + body_b._inv_mass + body_a._invI * rt_a + body_b._invI * rt_b
+                k_tangent = m_a + m_b + i_a * rt_a + i_b * rt_b
 
-                assert(k_tangent > EPSILON)
-                ccp.tangent_mass = 1.0 / k_tangent
+                if k_tangent > 0.0:
+                    vcp.tangent_mass = 1.0 / k_tangent
+                else:
+                    vcp.tangent_mass = 0.0
 
                 # Setup a velocity bias for restitution.
-                ccp.velocity_bias = 0.0
-                v_rel = cc.normal.dot(vb + scalar_cross(wb, ccp.rb) - va - scalar_cross(wa, ccp.ra))
+                vcp.velocity_bias = 0.0
+                v_rel = vc.normal.dot(vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra))
                 if v_rel < -VELOCITY_THRESHOLD:
-                    ccp.velocity_bias = -cc.restitution * v_rel
+                    vcp.velocity_bias = -vc.restitution * v_rel
             
-
             # If we have two points, then prepare the block solver.
-            if cc.point_count == 2:
-                ccp1 = cc.points[0]
-                ccp2 = cc.points[1]
+            if len(vc.points) == 2:
+                vcp1, vcp2 = vc.points
 
-                inv_mass_a = body_a._inv_mass
-                inv_mass_b = body_b._inv_mass
-                inv_I_a = body_a._invI
-                inv_I_b = body_b._invI
-                
-                rn1a = ccp1.ra.cross(cc.normal)
-                rn1b = ccp1.rb.cross(cc.normal)
-                rn2a = ccp2.ra.cross(cc.normal)
-                rn2b = ccp2.rb.cross(cc.normal)
+                ra1, rb1 = vcp1.r
+                ra2, rb2 = vcp2.r
+                rn1a = ra1.cross(vc.normal)
+                rn1b = rb1.cross(vc.normal)
+                rn2a = ra2.cross(vc.normal)
+                rn2b = rb2.cross(vc.normal)
 
-                k11 = inv_mass_a + inv_mass_b + inv_I_a * rn1a * rn1a + inv_I_b * rn1b * rn1b
-                k22 = inv_mass_a + inv_mass_b + inv_I_a * rn2a * rn2a + inv_I_b * rn2b * rn2b
-                k12 = inv_mass_a + inv_mass_b + inv_I_a * rn1a * rn2a + inv_I_b * rn1b * rn2b
+                k11 = m_a + m_b + i_a * rn1a * rn1a + i_b * rn1b * rn1b
+                k22 = m_a + m_b + i_a * rn2a * rn2a + i_b * rn2b * rn2b
+                k12 = m_a + m_b + i_a * rn1a * rn2a + i_b * rn1b * rn2b
 
                 # Ensure a reasonable condition number.
-                MAX_CONDITION_NUMBER = 1000.0
+                MAX_CONDITION_NUMBER = 1000.0 # TODO: settings
                 if (k11 ** 2)  < (MAX_CONDITION_NUMBER * (k11 * k22 - k12 ** 2)):
                     # K is safe to invert.
-                    cc.K.col1 = Vec2(k11, k12)
-                    cc.K.col2 = Vec2(k12, k22)
-                    cc.normal_mass = cc.K.inverse
+                    vc.K = Mat22((k11, k12), (k12, k22))
+                    vc.normal_mass = vc.K.inverse
                 else:
                     # The constraints are redundant, just use one.
                     # TODO_ERIN use deepest? (upstream todo)
-                    cc.point_count = 1
+                    vc.points = [vc.points[0]]
 
     def warm_start(self):
         """Warm start"""
-        for c in self.constraints:
-            body_a, body_b = c.body_a, c.body_b
-            inv_mass_a, inv_mass_b = body_a._inv_mass, body_b._inv_mass
-            inv_I_a, inv_I_b = body_a._invI, body_b._invI
-            normal = c.normal
+        positions = self.positions
+        velocities = self.velocities
+        for vc in self.velocity_constraints:
+            inv_mass_a, inv_mass_b = vc.inv_mass
+            inv_I_a, inv_I_b = vc.inv_i
+            normal = vc.normal
             tangent = normal.cross(1.0)
 
-            for ccp in c.points:
-                p = ccp.normal_impulse * normal + ccp.tangent_impulse * tangent
-                body_a._angular_velocity -= inv_I_a * ccp.ra.cross(p)
-                body_a._linear_velocity -= inv_mass_a * p
+            index_a, index_b = vc.indices
 
-                body_b._angular_velocity += inv_I_b * ccp.rb.cross(p)
-                body_b._linear_velocity += inv_mass_b * p
+            ca, aa = positions[index_a] # center, angle
+            cb, ab = positions[index_b]
+            va, wa = velocities[index_a] # linear vel, angular vel
+            vb, wb = velocities[index_b]
+         
+            for vcp in vc.points:
+                p = vcp.normal_impulse * normal + vcp.tangent_impulse * tangent
+                ra, rb = vcp.r
+                wa -= inv_I_a * ra.cross(p)
+                va -= inv_mass_a * p
+
+                wb += inv_I_b * rb.cross(p)
+                vb += inv_mass_b * p
+            velocities[index_a] = (va, wa)
+            velocities[index_b] = (vb, wb)
 
     def solve_velocity_constraints(self):
-        for c in self.constraints:
-            body_a, body_b = c.body_a, c.body_b
-            inv_mass_a, inv_mass_b = body_a._inv_mass, body_b._inv_mass
-            inv_I_a, inv_I_b = body_a._invI, body_b._invI
-            va = body_a._linear_velocity # note that we modify these in place
-            vb = body_b._linear_velocity # note that we modify these in place
-            wa = body_a._angular_velocity
-            wb = body_b._angular_velocity
-            normal = c.normal
+        positions = self.positions
+        velocities = self.velocities
+        for vc in self.velocity_constraints:
+            index_a, index_b = vc.indices
+            inv_mass_a, inv_mass_b = vc.inv_mass
+            inv_I_a, inv_I_b = vc.inv_i
+            normal = vc.normal
             tangent = normal.cross(1.0)
-            friction = c.friction
-            point_count = c.point_count
 
-            assert(point_count in (1, 2))
+            ca, aa = positions[index_a] # center, angle
+            cb, ab = positions[index_b]
+            va, wa = velocities[index_a] # linear vel, angular vel
+            vb, wb = velocities[index_b]
+            
+            normal = vc.normal
+            tangent = normal.cross(1.0)
+            friction = vc.friction
+
+            assert(len(vc.points) in (1, 2))
 
             # Solve tangent constraints
-            for ccp in c.points:
+            for vcp in vc.points:
                 # Relative velocity at contact
-                dv = vb + scalar_cross(wb, ccp.rb) - va - scalar_cross(wa, ccp.ra)
+                ra, rb = vcp.r
+                dv = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
 
                 # Compute tangent force
                 vt = dv.dot(tangent)
-                lambda_ = ccp.tangent_mass * (-vt)
+                lambda_ = vcp.tangent_mass * (-vt)
 
                 # Clamp the accumulated force
-                max_friction = friction * ccp.normal_impulse
-                new_impulse = clamp(ccp.tangent_impulse + lambda_, -max_friction, max_friction)
-                lambda_ = new_impulse - ccp.tangent_impulse
+                max_friction = friction * vcp.normal_impulse
+                new_impulse = clamp(vcp.tangent_impulse + lambda_, -max_friction, max_friction)
+                lambda_ = new_impulse - vcp.tangent_impulse
 
                 # Apply contact impulse
                 P = lambda_ * tangent
 
                 va -= inv_mass_a * P
-                wa -= inv_I_a * ccp.ra.cross(P)
+                wa -= inv_I_a * ra.cross(P)
 
                 vb += inv_mass_b * P
-                wb += inv_I_b * ccp.rb.cross(P)
+                wb += inv_I_b * rb.cross(P)
 
-                ccp.tangent_impulse = new_impulse
+                vcp.tangent_impulse = new_impulse
 
             # Solve normal constraints
-            if c.point_count == 1:
-                ccp = c.points[0]
+            if len(vc.points) == 1:
+                vcp = vc.points[0]
                 # Relative velocity at contact
-                dv = vb + scalar_cross(wb, ccp.rb) - va - scalar_cross(wa, ccp.ra)
+                ra, rb = vcp.r
+                dv = vb + scalar_cross(wb, rb) - va - scalar_cross(wa, ra)
 
                 # Compute normal impulse
                 vn = dv.dot(normal)
-                lambda_ = -ccp.normal_mass * (vn - ccp.velocity_bias)
+                lambda_ = -vcp.normal_mass * (vn - vcp.velocity_bias)
 
                 # clamp the accumulated impulse
-                new_impulse = max(ccp.normal_impulse + lambda_, 0.0)
-                lambda_ = new_impulse - ccp.normal_impulse
+                new_impulse = max(vcp.normal_impulse + lambda_, 0.0)
+                lambda_ = new_impulse - vcp.normal_impulse
 
                 # Apply contact impulse
                 P = lambda_ * normal
                 va -= inv_mass_a * P
-                wa -= inv_I_a * ccp.ra.cross(P)
+                wa -= inv_I_a * ra.cross(P)
 
                 vb += inv_mass_b * P
-                wb += inv_I_b * ccp.rb.cross(P)
-                ccp.normal_impulse = new_impulse
+                wb += inv_I_b * rb.cross(P)
+                vcp.normal_impulse = new_impulse
             else:
 # Block solver developed in collaboration with Dirk Gregorius (back in 01/07 on Box2D lite).
 # Build the mini LCP for this contact patch
@@ -562,22 +622,23 @@ class ContactSolver(object):
 #    = A * x' + b'
 # b' = b - A * a
 
-                cp1 = c.points[0]
-                cp2 = c.points[1]
+                cp1, cp2 = vc.points[:2]
 
                 a = Vec2(cp1.normal_impulse, cp2.normal_impulse)
                 assert(a.x >= 0.0 and a.y >= 0.0)
 
                 # Relative velocity at contact
-                dv1 = vb + scalar_cross(wb, cp1.rb) - va - scalar_cross(wa, cp1.ra)
-                dv2 = vb + scalar_cross(wb, cp2.rb) - va - scalar_cross(wa, cp2.ra)
+                ra1, rb1 = cp1.r
+                ra2, rb2 = cp2.r
+                dv1 = vb + scalar_cross(wb, rb1) - va - scalar_cross(wa, ra1)
+                dv2 = vb + scalar_cross(wb, rb2) - va - scalar_cross(wa, ra2)
 
                 # Compute normal velocity
                 vn1 = dv1.dot(normal)
                 vn2 = dv2.dot(normal)
 
                 b = Vec2(vn1 - cp1.velocity_bias, vn2 - cp2.velocity_bias)
-                b -= c.K * a
+                b -= vc.K * a
 
                 K_ERROR_TOL = 1e-3
 
@@ -592,7 +653,7 @@ class ContactSolver(object):
                      x' = - inv(A) * b'
                     """
 
-                    x = -(c.normal_mass * b)
+                    x = -(vc.normal_mass * b)
 
                     if x.x >= 0.0 and x.y >= 0.0:
                         # Resubstitute for the incremental impulse
@@ -602,10 +663,10 @@ class ContactSolver(object):
                         p1 = d.x * normal
                         p2 = d.y * normal
                         va -= inv_mass_a * (p1 + p2)
-                        wa -= inv_I_a * (cp1.ra.cross(p1) + cp2.ra.cross(p2))
+                        wa -= inv_I_a * (ra1.cross(p1) + ra2.cross(p2))
 
                         vb += inv_mass_b * (p1 + p2)
-                        wb += inv_I_b * (cp1.rb.cross(p1) + cp2.rb.cross(p2))
+                        wb += inv_I_b * (rb1.cross(p1) + rb2.cross(p2))
 
                         # Accumulate
                         cp1.normal_impulse = x.x
@@ -613,8 +674,8 @@ class ContactSolver(object):
 
                         if DEBUG_SOLVER:
                             # Postconditions
-                            dv1 = vb + scalar_cross(wb, cp1.rb) - va - scalar_cross(wa, cp1.ra)
-                            dv2 = vb + scalar_cross(wb, cp2.rb) - va - scalar_cross(wa, cp2.ra)
+                            dv1 = vb + scalar_cross(wb, rb1) - va - scalar_cross(wa, ra1)
+                            dv2 = vb + scalar_cross(wb, rb2) - va - scalar_cross(wa, ra2)
 
                             # Compute normal velocity
                             vn1 = dv1.dot(normal)
@@ -633,7 +694,7 @@ class ContactSolver(object):
 
                     x = Vec2(-cp1.normal_mass * b.x, 0.0)
                     vn1 = 0.0
-                    vn2 = c.K.col1.y * x.x + b.y
+                    vn2 = vc.K.col1.y * x.x + b.y
 
                     if x.x >= 0.0 and vn2 >= 0.0:
                         # Resubstitute for the incremental impulse
@@ -643,10 +704,10 @@ class ContactSolver(object):
                         p1 = d.x * normal
                         p2 = d.y * normal
                         va -= inv_mass_a * (p1 + p2)
-                        wa -= inv_I_a * (cp1.ra.cross(p1) + cp2.ra.cross(p2))
+                        wa -= inv_I_a * (ra1.cross(p1) + ra2.cross(p2))
 
                         vb += inv_mass_b * (p1 + p2)
-                        wb += inv_I_b * (cp1.rb.cross(p1) + cp2.rb.cross(p2))
+                        wb += inv_I_b * (rb1.cross(p1) + rb2.cross(p2))
 
                         # Accumulate
                         cp1.normal_impulse = x.x
@@ -654,7 +715,7 @@ class ContactSolver(object):
 
                         if DEBUG_SOLVER:
                             # Postconditions
-                            dv1 = vb + scalar_cross(wb, cp1.rb) - va - scalar_cross(wa, cp1.ra)
+                            dv1 = vb + scalar_cross(wb, rb1) - va - scalar_cross(wa, ra1)
 
                             # Compute normal velocity
                             vn1 = dv1.dot(normal)
@@ -670,7 +731,7 @@ class ContactSolver(object):
                        0 = a21 * 0 + a22 * x2' + b2'
                     """
                     x = Vec2(0.0, -cp2.normal_mass * b.y)
-                    vn1 = c.K.col2.x * x.y + b.x
+                    vn1 = vc.K.col2.x * x.y + b.x
                     vn2 = 0.0
 
                     if x.y >= 0.0 and vn1 >= 0.0:
@@ -681,10 +742,10 @@ class ContactSolver(object):
                         p1 = d.x * normal
                         p2 = d.y * normal
                         va -= inv_mass_a * (p1 + p2)
-                        wa -= inv_I_a * (cp1.ra.cross(p1) + cp2.ra.cross(p2))
+                        wa -= inv_I_a * (ra1.cross(p1) + ra2.cross(p2))
 
                         vb += inv_mass_b * (p1 + p2)
-                        wb += inv_I_b * (cp1.rb.cross(p1) + cp2.rb.cross(p2))
+                        wb += inv_I_b * (rb1.cross(p1) + rb2.cross(p2))
 
                         # Accumulate
                         cp1.normal_impulse = x.x
@@ -692,7 +753,7 @@ class ContactSolver(object):
 
                         if DEBUG_SOLVER:
                             # Postconditions
-                            dv2 = vb + scalar_cross(wb, cp2.rb) - va - scalar_cross(wa, cp2.ra)
+                            dv2 = vb + scalar_cross(wb, rb2) - va - scalar_cross(wa, ra2)
 
                             # Compute normal velocity
                             vn2 = dv2.dot(normal)
@@ -719,10 +780,10 @@ class ContactSolver(object):
                         p1 = d.x * normal
                         p2 = d.y * normal
                         va -= inv_mass_a * (p1 + p2)
-                        wa -= inv_I_a * (cp1.ra.cross(p1) + cp2.ra.cross(p2))
+                        wa -= inv_I_a * (ra1.cross(p1) + ra2.cross(p2))
 
                         vb += inv_mass_b * (p1 + p2)
-                        wb += inv_I_b * (cp1.rb.cross(p1) + cp2.rb.cross(p2))
+                        wb += inv_I_b * (rb1.cross(p1) + rb2.cross(p2))
 
                         # Accumulate
                         cp1.normal_impulse = x.x
@@ -733,82 +794,52 @@ class ContactSolver(object):
                     # No solution, give up. This is hit sometimes, but it doesn't seem to matter.
                     break
 
-            body_a._angular_velocity = wa
-            body_b._angular_velocity = wb
+            self.velocities[index_a] = (va, wa)
+            self.velocities[index_b] = (vb, wb)
 
     def store_impulses(self):
-        for c in self.constraints:
-            m = c.manifold
-            for mp, ccp in zip(m.used_points, c.points):
-                mp.normal_impulse = ccp.normal_impulse
-                mp.tangent_impulse = ccp.tangent_impulse
+        for vc in self.velocity_constraints:
+            m = vc.manifold
+            for mp, vcp in zip(m.used_points, vc.points):
+                mp.normal_impulse = vcp.normal_impulse
+                mp.tangent_impulse = vcp.tangent_impulse
 
-    def position_solver_manifold(self, cc, ccp):
-        """
-        Constraint cc, ContactConstraintPoint ccp
-        returns: normal, point, separation
-        """
-        if cc.type == Manifold.CIRCLES:
-            point_a = cc.body_a.get_world_point(cc.local_point)
-            point_b = cc.body_b.get_world_point(ccp.local_point)
-            if distance_squared(point_a, point_b) > EPSILON_SQR:
-                normal = point_b - point_a
-                normal.normalize()
-            else:
-                normal = Vec2(1.0, 0.0)
 
-            point = 0.5 * (point_a + point_b)
-            separation = (point_b - point_a).dot(normal) - cc.radius_a - cc.radius_b
-
-        elif cc.type == Manifold.FACE_A:
-            normal = cc.body_a.get_world_vector(cc.local_normal)
-            plane_point = cc.body_a.get_world_point(cc.local_point)
-
-            clip_point = cc.body_b.get_world_point(ccp.local_point)
-            separation = (clip_point - plane_point).dot(normal) - cc.radius_a - cc.radius_b
-            point = clip_point
-
-        elif cc.type == Manifold.FACE_B:
-            normal = cc.body_b.get_world_vector(cc.local_normal)
-            plane_point = cc.body_b.get_world_point(cc.local_point)
-
-            clip_point = cc.body_a.get_world_point(ccp.local_point)
-            separation = (clip_point - plane_point).dot(normal) - cc.radius_a - cc.radius_b
-            point = clip_point
-
-            # Ensure normal points from A to B
-            normal = -normal
-
-        return normal, point, separation
-
-    def solve_position_constraints(self, baumgarte):
+    def solve_position_constraints(self):
         """Sequential solver"""
         min_separation = 0.0
-        for c in self.constraints:
-            body_a = c.body_a
-            body_b = c.body_b
-            inv_mass_a = body_a._mass * body_a._inv_mass
-            inv_mass_b = body_b._mass * body_b._inv_mass
-            inv_I_a = body_a._mass * body_a._invI
-            inv_I_b = body_b._mass * body_b._invI
+        positions = self.positions
+        for pc in self.position_constraints:
+            inv_mass_a, inv_mass_b = pc.inv_mass
+            inv_I_a, inv_I_b = pc.inv_i
+            local_center_a, local_center_b = pc.local_centers
+            index_a, index_b = pc.indices
+
+            ca, aa = positions[index_a] # center, angle
+            cb, ab = positions[index_b]
 
             # Solve normal constraints
-            for ccp in c.points:
-                normal, point, separation = self.position_solver_manifold(c, ccp)
+            for j in range(len(pc.local_points)):
+                xf_a = Transform(angle=aa)
+                xf_b = Transform(angle=ab)
+                xf_a.position = ca - xf_a._rotation * local_center_a
+                xf_b.position = cb - xf_b._rotation * local_center_b
 
-                r_a = point - body_a._sweep.c
-                r_b = point - body_b._sweep.c
+                normal, point, separation = pc.solver_manifold(xf_a, xf_b, j)
+
+                ra = point - ca
+                rb = point - cb
 
                 # Track max constraint error.
                 min_separation = min(min_separation, separation)
 
                 # Prevent large corrections and allow slop.
-                C = clamp(baumgarte * (separation + LINEAR_SLOP), -MAX_LINEAR_CORRECTION, 0.0)
+                C = clamp(BAUMGARTE * (separation + LINEAR_SLOP), -MAX_LINEAR_CORRECTION, 0.0)
 
                 # Compute the effective mass.
-                rn_a = r_a.cross(normal)
-                rn_b = r_b.cross(normal)
-                K = inv_mass_a + inv_mass_b + (inv_I_a * rn_a * rn_a) + (inv_I_b * rn_b * rn_b)
+                rn_a = ra.cross(normal) ** 2
+                rn_b = rb.cross(normal) ** 2
+                K = inv_mass_a + inv_mass_b + (inv_I_a * rn_a) + (inv_I_b * rn_b)
 
                 # Compute normal impulse
                 if K > 0.0:
@@ -818,39 +849,86 @@ class ContactSolver(object):
 
                 P = impulse * normal
 
-                body_a._sweep.c -= inv_mass_a * P
-                body_a._sweep.a -= inv_I_a * r_a.cross(P)
-                body_a._synchronize_transform()
+                ca -= inv_mass_a * P
+                aa -= inv_I_a * ra.cross(P)
 
-                body_b._sweep.c += inv_mass_b * P
-                body_b._sweep.a += inv_I_b * r_b.cross(P)
-                body_b._synchronize_transform()
+                cb += inv_mass_b * P
+                ab += inv_I_b * rb.cross(P)
+            
+            positions[index_a] = (ca, aa)
+            positions[index_b] = (cb, ab)
 
         # We can't expect min_speparation >= -LINEAR_SLOP because we don't
         # push the separation above -LINEAR_SLOP.
         return min_separation >= -1.5 * LINEAR_SLOP
 
-    def solve_toi_position_constraints(self, baumgarte, toi_body_a, toi_body_b):
+    def solve_toi_position_constraints(self, toi_index_a, toi_index_b):
         """Sequential position solver for position constraints."""
-        return self.solve_position_constraints(baumgarte)
-        # Porting note: this is mostly identical to solve_position_constraints, but
-        #       with the addition of unused toi_bodies and unused mass values --
+        min_separation = 0.0
+        positions = self.positions
+        for pc in self.position_constraints:
+            local_center_a, local_center_b = pc.local_centers
+            index_a, index_b = pc.indices
 
-        #min_separation = 0.0
-        #for c in self.constraints:
-        #    body_a = c.body_a
-        #    body_b = c.body_b
+            ca, aa = positions[index_a] # center, angle
+            cb, ab = positions[index_b]
 
-        #    if body_a == toi_body_a or body_a == toi_body_b:
-        #        mass_a = body_a._mass
-        #    else:
-        #        mass_a = 0.0
+            if index_a in (toi_index_a, toi_index_b):
+                inv_mass_a = pc.inv_mass[0]
+                inv_I_a = pc.inv_i[0]
+            else:
+                inv_mass_a = 0.0
+                inv_I_a = 0.0
 
-        #    if body_b == toi_body_a or body_b == toi_body_b:
-        #        mass_b = body_b._mass
-        #    else:
-        #        mass_b = 0.0
+            if index_b in (toi_index_a, toi_index_b):
+                inv_mass_b = pc.inv_mass[1]
+                inv_I_b = pc.inv_i[1]
+            else:
+                inv_mass_b = 0.0
+                inv_I_b = 0.0
 
-        #    # the rest is identical to solve_position_constraints...
+            # Solve normal constraints
+            for j in range(len(pc.local_points)):
+                xf_a = Transform(angle=aa)
+                xf_b = Transform(angle=ab)
+                xf_a.position = ca - xf_a._rotation * local_center_a
+                xf_b.position = cb - xf_b._rotation * local_center_b
+
+                normal, point, separation = pc.solver_manifold(xf_a, xf_b, j)
+
+                ra = point - ca
+                rb = point - cb
+
+                # Track max constraint error.
+                min_separation = min(min_separation, separation)
+
+                # Prevent large corrections and allow slop.
+                C = clamp(TOI_BAUMGARTE * (separation + LINEAR_SLOP), -MAX_LINEAR_CORRECTION, 0.0)
+
+                # Compute the effective mass.
+                rn_a = ra.cross(normal) ** 2
+                rn_b = rb.cross(normal) ** 2
+                K = inv_mass_a + inv_mass_b + (inv_I_a * rn_a) + (inv_I_b * rn_b)
+
+                # Compute normal impulse
+                if K > 0.0:
+                    impulse = -C / K
+                else:
+                    impulse = 0.0
+
+                P = impulse * normal
+
+                ca -= inv_mass_a * P
+                aa -= inv_I_a * ra.cross(P)
+
+                cb += inv_mass_b * P
+                ab += inv_I_b * rb.cross(P)
+            
+            positions[index_a] = (ca, aa)
+            positions[index_b] = (cb, ab)
+
+        # We can't expect min_speparation >= -LINEAR_SLOP because we don't
+        # push the separation above -LINEAR_SLOP.
+        return min_separation >= -1.5 * LINEAR_SLOP
 
 Contact._initialize_registers()

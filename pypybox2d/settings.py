@@ -106,8 +106,7 @@ MAX_ROTATION_SQR = MAX_ROTATION**2
 # This scale factor controls how fast overlap is resolved. Ideally this would be 1 so
 # that overlap is removed in one time step. However using values close to 1 often lead
 # to overshoot.
-CONTACT_BAUMGARTE = 0.2
-
+BAUMGARTE = 0.2
 TOI_BAUMGARTE = 0.75
 
 # Sleep

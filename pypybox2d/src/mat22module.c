@@ -526,7 +526,7 @@ static PyMethodDef Mat22_methods[] = {
     {"copy", (PyCFunction)Mat22_copy, METH_NOARGS,
      "Copy the matrix"
     },
-    {"set_zero", (PyCFunction)Mat22_set_zero, METH_NOARGS,
+    {"zero", (PyCFunction)Mat22_set_zero, METH_NOARGS,
      "Zero the matrix [0 0; 0 0]"
     },
     {"set_identity", (PyCFunction)Mat22_set_identity, METH_NOARGS,

@@ -25,7 +25,7 @@ __date__ = "$Date$"
 
 import math
 from .settings import (EPSILON, MAX_FLOAT)
-from sys import version_info
+from sys import version_info, exc_info
 
 __all__ = (# Exceptions
            'PhysicsError', 'LockedError', 'EmptyFixtureError',
@@ -638,7 +638,7 @@ class PyMat22(object):
         self._col1.x=1.0; self._col2.x=0.0
         self._col1.y=0.0; self._col2.y=1.0
 
-    def set_zero(self):
+    def zero(self):
         """
         [ 0 0
           0 0 ]
@@ -692,11 +692,11 @@ class Mat33(object):
             raise IndexError('Index must be in (0,1,2)')
     def __setitem__(self, i, value):
         if i==0:
-            self.col1=Vec3(value)
+            self.col1=Vec3(*value)
         elif i==1:
-            self.col2=Vec3(value)
+            self.col2=Vec3(*value)
         elif i==2:
-            self.col3=Vec3(value)
+            self.col3=Vec3(*value)
         else:
             raise IndexError('Index must be in (0,1,2)')
 
@@ -707,13 +707,13 @@ class Mat33(object):
         Can be used as .set(Transform()) or .set(col1, col2)
         """
         if col2 is not None and col3 is not None:
-            self.col1=Vec3(other)
-            self.col2=Vec3(col2)
-            self.col2=Vec3(col3)
+            self.col1=Vec3(*other)
+            self.col2=Vec3(*col2)
+            self.col2=Vec3(*col3)
         else:
-            self.col1=Vec3(other.col1)
-            self.col2=Vec3(other.col2)
-            self.col3=Vec3(other.col3)
+            self.col1=Vec3(*other.col1)
+            self.col2=Vec3(*other.col2)
+            self.col3=Vec3(*other.col3)
 
     def set_identity(self):
         """
@@ -725,7 +725,7 @@ class Mat33(object):
         self.col1.y=0.0; self.col2.y=1.0; self.col3.y=0.0
         self.col1.z=0.0; self.col2.z=0.0; self.col3.z=1.0
 
-    def set_zero(self):
+    def zero(self):
         """
         [ 0 0 0 
           0 0 0
@@ -825,6 +825,7 @@ class PyTransform(object):
         if isinstance(other, (list, tuple, Vec2)):
             return self._rotation.mul_t(other-self._position)
         elif isinstance(other, PyTransform):
+            # TODO incorrect (update C also, and GetAxis functions...)
             return PyTransform(other.position-self._position, self._rotation.mul_t(other._rotation))
         else:
             raise TypeError
@@ -1132,7 +1133,8 @@ try:
     from ._common import AABB
     print('Using C extension')
 except:
-    print('Using Pure Python')
+    import sys
+    print('Using Pure Python (%s: %s)' % exc_info()[:2])
     Mat22 = PyMat22
     Transform = PyTransform
     AABB = PyAABB
