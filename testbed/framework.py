@@ -42,7 +42,7 @@ from random import uniform as rand_float
 TARGET_FPS=60
 PPM=10.0
 TIMESTEP=1.0/TARGET_FPS
-VEL_ITERS, POS_ITERS=8,8
+VEL_ITERS, POS_ITERS=1,1
 SCREEN_WIDTH, SCREEN_HEIGHT=800, 600
 SCREEN_OFFSETX, SCREEN_OFFSETY=30.0, 40.0
 colors = {
@@ -67,16 +67,21 @@ def draw_unattached_polygon(polygon, screen, transform, color):
     pygame.draw.polygon(screen, [c/2.0 for c in color], vertices, 0)
     pygame.draw.polygon(screen, color, vertices, 1)
 
-def draw_polygon(polygon, screen, body, fixture, transform=None, color=None):
-    transform = body.transform
-    color = colors[body.type]
+def draw_polygon(polygon, screen, fixture, body=None, transform=None, color=None):
+    if transform is None:
+        transform = body.transform
+    if color is None:
+        color = colors[body.type]
     vertices = to_screen([transform*v for v in polygon.vertices])
     pygame.draw.polygon(screen, [c/2.0 for c in color], vertices, 0)
     pygame.draw.polygon(screen, color, vertices, 1)
 b2.Polygon.draw = draw_polygon
 
-def draw_circle(circle, screen, body, fixture):
-    transform = body.transform
+def draw_circle(circle, screen, fixture, body=None, transform=None, color=None):
+    if transform is None:
+        transform = body.transform
+    if color is None:
+        color = colors[body.type]
     radius = circle.radius * PPM
     axis = transform.rotation.col1
     c = to_screen([transform*circle.position])[0]
@@ -84,14 +89,20 @@ def draw_circle(circle, screen, body, fixture):
     pygame.draw.aaline(screen, (255,255,255), c, (int(c[0] - radius*axis[0]), int(c[1] + radius*axis[1])))
 b2.Circle.draw = draw_circle
 
-def draw_edge(edge, screen, body, fixture):
-    transform = body.transform
+def draw_edge(edge, screen, fixture, body=None, transform=None, color=None):
+    if transform is not None:
+        transform = body.transform
+    if color is None:
+        color = colors[body.type]
     vertices = to_screen([transform*edge.vertex1, transform*edge.vertex2])
     pygame.draw.line(screen, colors[body.type], vertices[0], vertices[1])
 b2.Edge.draw = draw_edge
 
-def draw_loop(loop, screen, body, fixture):
-    transform = body.transform
+def draw_loop(loop, screen, fixture, body=None, transform=None, color=None):
+    if transform is None:
+        transform = body.transform
+    if color is None:
+        color = colors[body.type]
     vertices = to_screen([transform*v for v in loop.vertices])
     v1 = vertices[-1]
     for v2 in vertices:
@@ -117,8 +128,9 @@ def draw_lines(screen, points, color=(255, 255, 255)):
 def draw_world(screen, world):
     """Draw the world"""
     for body in world.bodies:
+        transform = body.transform
         for fixture in body.fixtures:
-            fixture.shape.draw(screen, body, fixture)
+            fixture.shape.draw(screen, fixture, body, transform)
 
 class Keys(object):
     pass

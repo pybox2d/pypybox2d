@@ -201,6 +201,7 @@ class Circle(Shape):
         return [copy(self.position)]
 
 class Polygon(Shape):
+    CHECK_VERTICES = True
     def __init__(self, vertices=None, box=None):
         self.radius=POLYGON_RADIUS
         self._vertices=[]
@@ -382,8 +383,11 @@ class Polygon(Shape):
         center *= 1.0 / area
         md.center = center + s
 
-        # Inertia tensor relative to the local origin.
-        md.I = density * I + md.mass * (s*s)
+        # Inertia tensor relative to the local origin (point s).
+        md.I = density * I
+
+        # Shift to center of mass then to original body origin.
+        md.I += md.mass * (md.center.length_squared - center.length_squared)
         return md
 
     @property
@@ -400,7 +404,13 @@ class Polygon(Shape):
         return 1
     @property
     def vertices(self):
+        """
+        The vertices of the polygon.
+
+        Raises ValueError if set with invalid input.
+        """
         return self._vertices
+
     @vertices.setter
     def vertices(self, vertices):
         if len(vertices) < 3:
@@ -417,6 +427,25 @@ class Polygon(Shape):
             normal.normalize()
             normals.append(normal)
 
+        if Polygon.CHECK_VERTICES:
+            # Ensure the polygon is convex and the interior
+            # is to the left of each edge.
+            for i1, v1 in enumerate(vertices):
+                i2 = (i1 + 1) % count
+                edge = vertices[i2 % count] - vertices[i1]
+                for j, v2 in enumerate(vertices):
+                    # Don't check vertices on the current edge.
+                    if j in (i1, i2):
+                        continue
+
+                    r = vertices[j] - vertices[i1]
+
+                    s = edge.cross(r)
+                    if s <= 0.0:
+                        raise ValueError("ERROR: Please ensure your polygon is \
+                                         convex and has a CCW winding order")
+
+        
         self._normals=normals
 
         # Copy the vertices

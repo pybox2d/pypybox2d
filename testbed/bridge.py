@@ -24,7 +24,9 @@ __date__ = "$Date$"
 
 from framework import *
 
-def create_bridge(world, ground, size, offset, plank_count, friction=0.6, density=1.0):
+# TODO: *IMPORTANT* bug when default density is small (i.e., 1.0). Positions/angles skyrocket
+# TODO:  and cause pygame to crap out.
+def create_bridge(world, ground, size, offset, plank_count, friction=0.6, density=20.0):
     """
     Create a bridge with plank_count planks,
     utilizing rectangular planks of size (width, height).
@@ -35,7 +37,7 @@ def create_bridge(world, ground, size, offset, plank_count, friction=0.6, densit
     width, height=size
     x_offset, y_offset=offset
     plank=b2.Fixture( 
-                shape=b2.Polygon(box=(width/2,height/2)),
+                shape=b2.Polygon(box=(width/2.0,height/2.0)),
                 friction=friction,
                 density=density,
                 )
@@ -46,6 +48,7 @@ def create_bridge(world, ground, size, offset, plank_count, friction=0.6, densit
         body = world.create_dynamic_body(
                     position=(x_offset+width*i, y_offset),
                     fixtures=plank,
+                    user_data='plank%d' % i,
                 )
         bodies.append(body)
 

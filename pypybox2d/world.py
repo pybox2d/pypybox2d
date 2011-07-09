@@ -28,7 +28,8 @@ __date__ = "$Date$"
 from copy import copy
 from .common import (LockedError, Vec2, property)
 from .body import Body
-from .contact_manager import (Island, ContactManager)
+from .contact_manager import ContactManager
+from .island import Island
 from . import joints
 from . import settings
 from . import distance
@@ -661,11 +662,11 @@ class World(object):
 
                     assert(type_a == Body.DYNAMIC or type_b == Body.DYNAMIC)
 
-                    awake_a = body_a.awake and type_a != Body.STATIC
-                    awake_b = body_b.awake and type_b != Body.STATIC
+                    active_a = body_a.awake and type_a != Body.STATIC
+                    active_b = body_b.awake and type_b != Body.STATIC
 
-                    # Is at least one body awake?
-                    if not awake_a and not awake_b:
+                    # Is at least one body active (awake and dynamic or kinematic)?
+                    if not active_a and not active_b:
                         continue
 
                     collide_a = body_a.bullet or type_a != Body.DYNAMIC

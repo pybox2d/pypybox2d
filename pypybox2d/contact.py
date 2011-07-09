@@ -419,32 +419,32 @@ class ContactSolver(object):
             manifold = vc.contact.manifold
             index_a, index_b = vc.indices
 
-            m_a, m_b = vc.inv_mass
-            i_a, i_b = vc.inv_i
+            ma, mb = vc.inv_mass
+            ia, ib = vc.inv_i
             local_center_a, local_center_b = pc.local_centers
             
-            c_a, a_a = positions[index_a] # center, angle
-            c_b, a_b = positions[index_b]
+            ca, aa = positions[index_a] # center, angle
+            cb, ab = positions[index_b]
             va, wa = velocities[index_a] # linear vel, angular vel
             vb, wb = velocities[index_b]
 
             assert(manifold.point_count > 0)
             
-            xf_a = Transform(angle=a_a)
-            xf_b = Transform(angle=a_b)
-            xf_a.position = c_a - xf_a._rotation * local_center_a
-            xf_b.position = c_b - xf_b._rotation * local_center_b
+            xf_a = Transform(angle=aa)
+            xf_b = Transform(angle=ab)
+            xf_a.position = ca - xf_a._rotation * local_center_a
+            xf_b.position = cb - xf_b._rotation * local_center_b
 
             world_manifold = WorldManifold(manifold, xf_a, radius_a, xf_b, radius_b)
             vc.normal = copy(world_manifold.normal)
 
             for vcp, wmp in zip(vc.points, world_manifold.points):
-                ra, rb = vcp.r = (wmp - c_a, wmp - c_b)
+                ra, rb = vcp.r = (wmp - ca, wmp - cb)
                
                 rn_a = ra.cross(vc.normal) ** 2
                 rn_b = rb.cross(vc.normal) ** 2
                 
-                k_normal = m_a + m_b + i_a * rn_a + i_b * rn_b
+                k_normal = ma + mb + ia * rn_a + ib * rn_b
 
                 if k_normal > 0.0:
                     vcp.normal_mass = 1.0 / k_normal
@@ -456,7 +456,7 @@ class ContactSolver(object):
                 rt_a = ra.cross(tangent) ** 2
                 rt_b = rb.cross(tangent) ** 2
 
-                k_tangent = m_a + m_b + i_a * rt_a + i_b * rt_b
+                k_tangent = ma + mb + ia * rt_a + ib * rt_b
 
                 if k_tangent > 0.0:
                     vcp.tangent_mass = 1.0 / k_tangent
@@ -480,9 +480,9 @@ class ContactSolver(object):
                 rn2a = ra2.cross(vc.normal)
                 rn2b = rb2.cross(vc.normal)
 
-                k11 = m_a + m_b + i_a * rn1a * rn1a + i_b * rn1b * rn1b
-                k22 = m_a + m_b + i_a * rn2a * rn2a + i_b * rn2b * rn2b
-                k12 = m_a + m_b + i_a * rn1a * rn2a + i_b * rn1b * rn2b
+                k11 = ma + mb + ia * rn1a * rn1a + ib * rn1b * rn1b
+                k22 = ma + mb + ia * rn2a * rn2a + ib * rn2b * rn2b
+                k12 = ma + mb + ia * rn1a * rn2a + ib * rn1b * rn2b
 
                 # Ensure a reasonable condition number.
                 MAX_CONDITION_NUMBER = 1000.0 # TODO: settings
@@ -860,7 +860,7 @@ class ContactSolver(object):
 
         # We can't expect min_speparation >= -LINEAR_SLOP because we don't
         # push the separation above -LINEAR_SLOP.
-        return min_separation >= -1.5 * LINEAR_SLOP
+        return min_separation >= -3.0 * LINEAR_SLOP
 
     def solve_toi_position_constraints(self, toi_index_a, toi_index_b):
         """Sequential position solver for position constraints."""

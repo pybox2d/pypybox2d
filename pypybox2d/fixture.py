@@ -168,7 +168,10 @@ class Fixture(object):
         return self._sensor
     @sensor.setter
     def sensor(self, sensor):
-        self._sensor = sensor
+        if sensor != self._sensor:
+            if self.body:
+                self.body.awake = True
+            self._sensor = sensor
 
     @property
     def category_bits(self):
@@ -251,8 +254,7 @@ class Fixture(object):
         self._proxies=[]
         temp_aabb = AABB()
         for i in range(self._shape.child_count):
-            aabb = self._shape.compute_aabb(xf, i, temp_aabb)
-            # temp_aabb is copied for each fixture proxy
+            self._shape.compute_aabb(xf, i, temp_aabb)
             proxy = FixtureProxy(self, temp_aabb, i)
 
             proxy.proxy_ref = broadphase.create_proxy(proxy.aabb, proxy)
@@ -265,7 +267,7 @@ class Fixture(object):
             proxy.proxy_ref = None
 
     def _refilter(self):
-        if not self._body:
+        if self._body is None:
             return
 
         # Flag associated contacts for filtering

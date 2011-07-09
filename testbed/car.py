@@ -90,7 +90,7 @@ class Car (Framework):
     hz=4
     zeta=0.7
     speed=50
-    bridgePlanks=20
+    bridge_planks=20
     def __init__(self):
         super(Car, self).__init__()
 
@@ -140,7 +140,7 @@ class Car (Framework):
             )
 
         # Bridge
-        create_bridge(self.world, ground, (2.0, 0.25), (161.0, -0.125), self.bridgePlanks)
+        create_bridge(self.world, ground, (2.0, 0.25), (161.0, -0.125), self.bridge_planks)
 
         # Boxes
         for y_pos in [0.5, 1.5, 2.5, 3.5, 4.5]:

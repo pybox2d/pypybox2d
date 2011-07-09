@@ -463,6 +463,18 @@ fixtures=%s)""" % info
         self._force += force
         self._torque += (point - self._sweep.c).cross(force)
 
+    def apply_force_to_center(self, force):
+        """
+        Apply a force to the center of mass. This wakes up the body.
+        @param force the world force vector, usually in Newtons (N).
+        """
+        if self._type != Body.DYNAMIC:
+            return
+        if not self.awake:
+            self.awake=True
+        
+        self._force += force
+
     def apply_torque(self, torque):
         """
         Apply a torque. This affects the angular velocity
@@ -893,8 +905,7 @@ fixtures=%s)""" % info
         self._sweep.advance(alpha)
         center = self._sweep.c = copy(self._sweep.c0)
         angle = self._sweep.a = self._sweep.a0
-
+        
         self._xf._rotation.angle = angle
         self._xf.position = center - self._xf._rotation * self._sweep.local_center
-
 

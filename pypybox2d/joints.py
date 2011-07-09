@@ -396,6 +396,7 @@ class DistanceJoint(Joint):
         return abs(C) < LINEAR_SLOP
 
 
+# TODO: *IMPORTANT* big bug with revolutejoint... not sure what's going on yet.
 class RevoluteJoint(Joint):
     """
     A revolute joint constrains two bodies to share a common point while they
@@ -597,7 +598,7 @@ class RevoluteJoint(Joint):
 
         va, wa = velocities[index_a]
         vb, wb = velocities[index_b]
-
+        
         qa = Mat22(angle=aa)
         qb = Mat22(angle=ab)
 
@@ -762,6 +763,7 @@ class RevoluteJoint(Joint):
         ca, aa = positions[index_a]
         cb, ab = positions[index_b]
 
+        ma, mb = self._inv_mass_a, self._inv_mass_b
         ia, ib = self._inv_Ia, self._inv_Ib
         fixed_rotation = ((ia + ib) == 0.0)
         angular_error = 0.0
@@ -792,8 +794,8 @@ class RevoluteJoint(Joint):
                 C = clamp(C - ANGULAR_SLOP, 0.0, MAX_ANGULAR_CORRECTION)
                 limit_impulse = -self._motor_mass * C
 
-            aa -= self._inv_Ia * limit_impulse
-            ab += self._inv_Ib * limit_impulse
+            aa -= ia * limit_impulse
+            ab += ib * limit_impulse
 
         # Solve point-to-point constraint.
         qa = Mat22(angle=aa)
@@ -805,27 +807,25 @@ class RevoluteJoint(Joint):
 
         C = cb + rb - ca - ra
         position_error = C.length
-
-        ma, mb = self._inv_mass_a, self._inv_mass_b
-        inv_ia, inv_ib = self._inv_Ia, self._inv_Ib
-
+        
+        rax, ray = ra
+        rbx, rby = rb
         K = Mat22()
-        K.col1.x = ma + mb + ia * ra.y * ra.y + ib * rb.y * rb.y
-        K.col1.y = -ia * ra.x * ra.y - ib * rb.x * rb.y
+        K.col1.x = ma + mb + ia * ray * ray + ib * rby * rby
+        K.col1.y = -ia * rax * ray - ib * rbx * rby
         K.col2.x = K.col1.y
-        K.col2.y = ma + mb + ia * ra.x * ra.x + ib * rb.x * rb.x
+        K.col2.y = ma + mb + ia * rax * rax + ib * rbx * rbx
 
         impulse = -K.solve(C)
 
         ca -= ma * impulse
-        aa -= inv_ia * ra.cross(impulse)
+        aa -= ia * ra.cross(impulse)
 
         cb += mb * impulse
-        ab += inv_ib * rb.cross(impulse)
+        ab += ib * rb.cross(impulse)
 
         positions[index_a] = (ca, aa)
         positions[index_b] = (cb, ab)
-
         return position_error <= LINEAR_SLOP and angular_error <= ANGULAR_SLOP
 
 class FrictionJoint(Joint):
@@ -2138,16 +2138,16 @@ class WheelJoint(Joint):
         qa = Mat22(angle=aa)
         qb = Mat22(angle=ab)
 
-        # Compute the effective mass matrix.
+        # Compute the effective masses
         ra = self._ra = qa * (self._local_anchor_a - local_center_a)
         rb = self._rb = qb * (self._local_anchor_b - local_center_b)
 
         d = cb + rb - ca - ra
 
         # Point to line constraint
-        ay = self._ay = qa * (self._local_y_axis)
-        s_ay = self._s_ay = (d + ra).cross(self._ay)
-        s_by = self._s_by = rb.cross(self._ay)
+        ay = self._ay = qa * self._local_y_axis
+        s_ay = self._s_ay = (d + ra).cross(ay)
+        s_by = self._s_by = rb.cross(ay)
 
         self._mass = ma + mb + ia * s_ay ** 2 + ib * s_by ** 2
 
@@ -2160,10 +2160,10 @@ class WheelJoint(Joint):
         self._gamma = 0.0
         if self._frequency > 0.0:
             ax = self._ax = qa * self._local_x_axis
-            s_ax = self._s_ax = (d + ra).cross(self._ax)
-            s_bx = self._s_bx = rb.cross(self._ax)
+            s_ax = self._s_ax = (d + ra).cross(ax)
+            s_bx = self._s_bx = rb.cross(ax)
 
-            inv_mass = ma + mb + ia * s_ax ** 2 + ib * s_bx ** 2
+            inv_mass = ma + mb + ia * (s_ax ** 2) + ib * (s_bx ** 2)
 
             if inv_mass > 0.0:
                 self._spring_mass = 1.0 / inv_mass
@@ -2177,11 +2177,11 @@ class WheelJoint(Joint):
                 d = 2.0 * self._spring_mass * self._damping_ratio * omega
 
                 # Spring stiffness
-                k = self._spring_mass * omega * omega
-
-                dt = step.dt
+                k = self._spring_mass * (omega ** 2)
 
                 # magic formulas
+                dt = step.dt
+
                 self._gamma = dt * (d + dt * k)
                 if self._gamma > 0.0:
                     self._gamma = 1.0 / self._gamma
@@ -2211,9 +2211,13 @@ class WheelJoint(Joint):
             self._spring_impulse *= dt_ratio
             self._motor_impulse *= dt_ratio
 
-            P = self._impulse * ay + self._spring_impulse * self._ax
-            La = self._impulse * s_ay + self._spring_impulse * self._s_ax + self._motor_impulse
-            Lb = self._impulse * s_by + self._spring_impulse * self._s_bx + self._motor_impulse
+            impulse = self._impulse
+            spring_impulse = self._spring_impulse
+            motor_impulse = self._motor_impulse
+
+            P = impulse * ay + spring_impulse * self._ax
+            La = impulse * s_ay + spring_impulse * self._s_ax + motor_impulse
+            Lb = impulse * s_by + spring_impulse * self._s_bx + motor_impulse
 
             va -= ma * P
             wa -= ia * La
@@ -2267,7 +2271,7 @@ class WheelJoint(Joint):
 
         # Solve point to line constraint
         Cdot = self._ay.dot(vb - va) + self._s_by * wb - self._s_ay * wa
-        impulse = self._mass * (-Cdot)
+        impulse = -self._mass * Cdot
         self._impulse += impulse
 
         P = impulse * self._ay
@@ -2295,19 +2299,18 @@ class WheelJoint(Joint):
         ma, mb = self._inv_mass_a, self._inv_mass_b
         ia, ib = self._inv_Ia, self._inv_Ib
 
-        # Compute the effective mass matrix.
         ra = qa * (self._local_anchor_a - self._local_center_a)
         rb = qb * (self._local_anchor_b - self._local_center_b)
 
-        d = cb + rb - ca - ra
+        d = (cb - ca) + rb - ra
+
+        k = ma + mb + ia * self._s_ay ** 2 + ib * self._s_by ** 2
 
         ay = qa * self._local_y_axis
         s_ay = (d + ra).cross(ay)
         s_by = rb.cross(ay)
 
         C = d.dot(ay)
-
-        k = ma + mb + ia * self._s_ay ** 2 + ib * self._s_by ** 2 # TODO: wrong?
 
         if k != 0.0:
             impulse = - C / k
@@ -2318,15 +2321,14 @@ class WheelJoint(Joint):
         La = impulse * s_ay
         Lb = impulse * s_by
 
-        ca -= ma * P
+        ca = ca - ma * P
         aa -= ia * La
-        cb += mb * P
+        cb = cb + mb * P
         ab += ib * Lb
 
         positions[index_a] = (ca, aa)
         positions[index_b] = (cb, ab)
         return abs(C) <= LINEAR_SLOP
-
 
 class MouseJoint(Joint):
     """
