@@ -187,13 +187,14 @@ class BuoyancyController(Controller):
             for fixture in body.fixtures:
                 shape = fixture.shape
 
-                s_area, sc = shape.compute_submerged_area(normal, offset, xf)
-                area += s_area
-                area_c += s_area * sc
                 if self._use_density:
                     shape_density = shape.density
                 else:
                     shape_density = 1.0
+
+                s_area, sc = shape.compute_submerged_area(normal, offset, xf, shape_density)
+                area += s_area
+                area_c += s_area * sc
 
                 mass += s_area * shape_density
                 mass_c += (s_area * shape_density) * sc
@@ -208,12 +209,11 @@ class BuoyancyController(Controller):
 
                 # Linear drag
                 lin_vel = body.get_linear_velocity_from_world_point(area_c)
-                #print((area_c - body.world_center).length)
                 drag_force = (lin_vel - self._velocity) * (-self._linear_drag * area)
-                #print((lin_vel - self._velocity), (-self._linear_drag * area), drag_force)
                 body.apply_force(drag_force, area_c)
 
                 # Angular drag
                 # UPSTREAM_TODO: Something that makes more physical sense?
                 body.apply_torque(-body.inertia / body.mass * area * 
-                                  body.angular_velocity * self._angular_drag)
+                                  body._angular_velocity * self._angular_drag)
+

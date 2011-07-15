@@ -485,7 +485,7 @@ fixtures=%s)""" % info
         if self._type != Body.DYNAMIC:
             return
         if not self.awake:
-            self.awake=True
+            self.awake = True
         
         self._force += force
         self._torque += (point - self._sweep.c).cross(force)
@@ -558,7 +558,7 @@ fixtures=%s)""" % info
         Get the rotational inertia of the body about the local origin.
         @return the rotational inertia, usually in kg-m^2.
         """
-        return self._I + self._mass * (self._sweep.local_center * self._sweep.local_center)
+        return self._I + self._mass * self._sweep.local_center.length_squared
 
     @property
     def mass_data(self):
@@ -904,7 +904,7 @@ fixtures=%s)""" % info
             fixture._synchronize(broadphase, xf1, self._xf)
 
     def _synchronize_transform(self):
-        self._xf._rotation.angle = self._sweep.a
+        self._xf = Transform(angle=self._sweep.a)
         self._xf.position = self._sweep.c - (self._xf._rotation * self._sweep.local_center)
 
     def _should_collide(self, other):

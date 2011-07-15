@@ -41,17 +41,43 @@ class Buoyancy(Framework):
         
         world = self.world
 
-        world.create_static_body(shapes=b2.Edge((-20, 0),( 20, 0))) 
+        ground = world.create_static_body(shapes=b2.Edge((-20, 0),( 20, 0))) 
 
         controller = world.create_buoyancy_controller(
                                         offset=15, normal=(0, 1), density=2, 
                                         linear_drag=2, angular_drag=1)
-        
-        for i, restitution in enumerate([0.0, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2]):
+       
+        # Create a few spheres to bob around
+        for i in range(7):
+            body = self.world.create_dynamic_body(
+                    position=(-10+4.0*i, 20), 
+                    fixtures=b2.Fixture(shape=b2.Circle(radius=1.0), 
+                                density=1.0)
+                    )
+
+            controller.add_body(body)
+
+        # Create a bridge, and add it to the controller
+        num_planks = 30
+        plank_bodies = create_bridge(self.world, ground, (1.0, 0.25), (-14.5, 5), num_planks, 0.2, 1)
+        for body in plank_bodies:
+            controller.add_body(body)
+
+        # Create a circle underneath the bridge
+        body = self.world.create_dynamic_body(
+                position=(-10.0, 0), 
+                fixtures=b2.Fixture(shape=b2.Circle(radius=1.0), 
+                            density=1.0)
+                )
+
+        controller.add_body(body)
+
+        # And finally, some triangles
+        for i in range(5):
             body = self.world.create_dynamic_body(
                     position=(-10+3.0*i, 20), 
-                    fixtures=b2.Fixture(shape=b2.Circle(radius=1.0), 
-                                density=1.0, restitution=restitution)
+                    fixtures=b2.Fixture(shape=b2.Polygon(vertices=[(-0.5,0),(0,-0.5),(0.5, 0.0)]),
+                                density=1.0)
                     )
 
             controller.add_body(body)

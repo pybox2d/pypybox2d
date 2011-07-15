@@ -102,17 +102,20 @@ class Shape(object):
         """
         return NotImplementedError # Abstract
 
-    def compute_submerged_area(self, normal, offset, xf):
+    def compute_submerged_area(self, normal, offset, xf, density):
         """
         Compute the volume and centroid of this shape intersected with 
         a half plane.
         @param normal the surface normal
         @param offset the surface offset along normal
         @param xf the shape transform
+        @param density the density of the fixture this shape is attached to
         @return (vol, centroid), where vol is the total volume less than 
         offset along normal
         """
-        return NotImplementedError # Abstract
+        # If this is not implemented for your shape, you cannot use that
+        # shape in a buoyancy controller, for example.
+        return NotImplementedError
 
     @property
     def vertex_count(self):
@@ -212,17 +215,16 @@ class Circle(Shape):
     def vertices(self):
         return [copy(self.position)]
 
-    def compute_submerged_area(self, normal, offset, xf):
+    def compute_submerged_area(self, normal, offset, xf, density):
         p = xf * self.position
         radius = self.radius
         l = -(normal.dot(p) - offset)
         if l < -radius + EPSILON:
             # Completely dry
-            return 0.0, Vec2(0.0, 0.0)
+            return 0.0, p
         elif l > radius:
             # Completely wet
-            c = Vec2(*self.position)
-            return PI * radius**2, c
+            return PI * radius**2, p
 
         # Magic
         r2 = radius ** 2
@@ -531,6 +533,86 @@ class Polygon(Shape):
         
         c *= 1.0 / area
         return c
+
+    def compute_submerged_area(self, normal, offset, xf, density):
+        vertices = self._vertices
+        vertex_count = len(vertices)
+
+        # Transform plane into shape co-ordinates
+        normal_l = xf._rotation.mul_t(normal)
+        offset_l = offset - normal.dot(xf._position)
+
+        last_submerged = False
+        depths = [normal_l.dot(v) - offset_l for v in vertices]
+        into_index = None
+        outof_index = None
+        dive_count = 0
+        for i, (depth, v) in enumerate(zip(depths, vertices)):
+            is_submerged = depth < EPSILON
+            if i > 0:
+                if is_submerged:
+                    if not last_submerged:
+                        into_index = i-1
+                        dive_count += 1
+                else:
+                    if last_submerged:
+                        outof_index = i-1
+                        dive_count += 1
+            last_submerged = is_submerged
+
+        if dive_count == 0:
+            md = self.compute_mass(density)
+            if last_submerged:
+                # Completely submerged
+                return md.mass / density, xf * md.center
+            else:
+                # Completely dry
+                return 0.0, xf * md.center
+        elif dive_count == 1:
+            if into_index is None:
+                into_index = vertex_count - 1
+            else:
+                outof_index = vertex_count - 1
+
+        into_index2 = (into_index + 1) % vertex_count
+        outof_index2 = (outof_index + 1) % vertex_count
+
+        into_lambda = -depths[into_index] / (depths[into_index2] - depths[into_index])
+        outof_lambda = -depths[outof_index] / (depths[outof_index2] - depths[outof_index])
+
+        into_vec = vertices[into_index] * (1.0 - into_lambda) + vertices[into_index2] * into_lambda
+        outof_vec = vertices[outof_index] * (1.0 - outof_lambda) + vertices[outof_index2] * outof_lambda
+
+        # Initialize accumulator
+        area = 0
+        center = Vec2(0, 0)
+        p2 = vertices[into_index2]
+
+        # An awkward loop from into_index2+1 to outof_index2
+        i = into_index2
+        while i != outof_index2:
+            i = (i + 1) % vertex_count
+            if i == outof_index2:
+                p3 = outof_vec
+            else:
+                p3 = vertices[i]
+
+            # Add the triangle formed by into_vec, p2, p3
+            e1 = p2 - into_vec
+            e2 = p3 - into_vec
+
+            d = e1.cross(e2)
+            triangle_area = 0.5 * d
+            area += triangle_area
+
+            # Area-weighted centroid
+            center += triangle_area * (into_vec + p2 + p3) / 3.0
+
+            p2 = p3
+
+        # Normalize and transform centroid
+        center *= 1.0 / area
+        return area, xf * center
 
 class Edge(Shape):
     """
