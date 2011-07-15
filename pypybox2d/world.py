@@ -34,6 +34,7 @@ from . import joints
 from . import settings
 from . import distance
 from . import toi
+from . import controllers
 
 MAX_TRANSLATION = settings.MAX_TRANSLATION
 MAX_TRANSLATION_SQR = settings.MAX_TRANSLATION_SQR
@@ -61,13 +62,6 @@ class TimeStep(object):
         self.warm_starting=bool(warm_starting)
 
 class World(object):
-    # TODO slots just for debugging
-    __slots__ = ['_gravity', '_joint_destruction_listener', 
-                 '_fixture_destruction_listener', '_contact_filter', 'bodies',
-                 'joints', '_warm_starting', '_continuous_physics', 
-                 '_sub_stepping', '_allow_sleep', 'contact_manager', 
-                 '_step_complete', '_inv_dt0', '_new_fixture', '_locked',
-                '_auto_clear_forces']
     def __init__(self, gravity=(0, -10), do_sleep=True, warm_starting=True, 
                  continuous_physics=True, sub_stepping=False, auto_clear_forces=True,
                  joint_destruction_listener=None, fixture_destruction_listener=None,
@@ -76,6 +70,7 @@ class World(object):
 
         self.bodies = []
         self.joints = []
+        self.controllers = []
         self._warm_starting = warm_starting
         self._continuous_physics = continuous_physics
         self._sub_stepping = sub_stepping
@@ -248,32 +243,8 @@ class World(object):
         """
         if self.locked:
             raise LockedError('Cannot remove a body while simulating')
-
-        if body not in self.bodies:
-            raise ValueError('Body not in world')
-
-        # Delete the attached joints
-        for joint in list(body.joints):
-            if self._joint_destruction_listener:
-                self._joint_destruction_listener(joint)
-
-            self.destroy_joint(joint)
-
-        del body.joints[:] # clear the list in place
-
-        # And contacts
-        for contact in list(body._contacts):
-            self.contact_manager.destroy(contact)
-
-        del body._contacts[:]
-
-        # And fixtures (also destroying broad-phase proxies)
-        broadphase = self.contact_manager.broadphase
-        for fixture in list(body.fixtures):
-            if self._fixture_destruction_listener:
-                self._fixture_destruction_listener(fixture)
-
-            fixture._destroy_proxies(broadphase)
+        elif body not in self.bodies:
+            raise ValueError('Body not in this world')
 
         self.bodies.remove(body)
         body._detached_from_world()
@@ -503,6 +474,10 @@ class World(object):
 
     def _solve(self, step):
         """Find islands, integrate and solve constraints, solve position constraints"""
+        # Evaluate all controllers
+        for controller in self.controllers:
+            controller.step(step)
+
         # Size the island for the worst case
         island=Island(len(self.bodies), len(self.contact_manager.contacts), len(self.joints), self.contact_manager.post_solve)
 
@@ -944,6 +919,35 @@ class World(object):
         joint = joints.WheelJoint(*args, **kwargs)
         self.add_joint(joint)
         return joint
+
+    def create_buoyancy_controller(self, *args, **kwargs):
+        """
+        Create a distance joint between two bodies.
+
+        For more information, see the joints.DistanceJoint class.
+        """
+        controller = controllers.BuoyancyController(self, *args, **kwargs)
+        self.add_controller(controller)
+        return controller
+
+    def add_controller(self, controller):
+        """
+        Add a controller to the world
+        """
+        # And add it to the list
+        self.controllers.append(controller)
+        return controller
+
+    def destroy_controller(self, controller):
+        """
+        Destroy a controller. Remove it from the world
+        and detach all bodies.
+        """
+        if controller not in self.controllers:
+            raise ValueError('Controller not in this world')
+
+        controller.clear()
+        self.controllers.remove(controller)
 
     @staticmethod
     def default_contact_filter(filter_a, filter_b):

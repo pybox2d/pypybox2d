@@ -36,14 +36,6 @@ class Body(object):
     STATIC=0
     DYNAMIC=1
     KINEMATIC=2
-
-    # TODO Body only slotted for testing
-    __slots__=[
-        '_xf', '_sweep', '_force', '_torque', '_I', '_invI', '_sleep_time', '_contacts',
-        'fixtures', 'joints', '_world', '_linear_velocity', '_angular_velocity', '_linear_damping', '_angular_damping',
-        '_gravity_scale', '_island_flag', '_island_index', '_awake', '_allow_sleep', '_fixed_rotation', '_bullet', '_type',
-        '_active', '_sweep', '_mass', '_inv_mass', 'user_data', '__weakref__', ]
-
     def __init__(self, world=None, position=(0,0), angle=0.0, linear_velocity=(0,0),
                  angular_velocity=0.0, linear_damping=0.0, angular_damping=0.0,
                  allow_sleep=True, awake=True, fixed_rotation=False, bullet=False,
@@ -78,6 +70,7 @@ class Body(object):
         self._invI = 0.0 
         self._sleep_time = 0.0
         self._contacts = []
+        self._controllers = []
         self.fixtures = []
         self.joints = []
         self.user_data = user_data
@@ -315,15 +308,49 @@ fixtures=%s)""" % info
             self.reset_mass_data()
 
     def _detached_from_world(self):
+        world = self._world
+
+        # Delete the attached joints
+        for joint in list(self.joints):
+            if world._joint_destruction_listener:
+                world._joint_destruction_listener(joint)
+
+            world.destroy_joint(joint)
+
+        del self.joints[:] # clear the list in place
+
+        # Destroy the attached contacts
+        contact_manager = world.contact_manager
+        for contact in list(self._contacts):
+            contact_manager.destroy(contact)
+
+        del self._contacts[:]
+
+        # And fixtures (also destroying broad-phase proxies)
+        broadphase = contact_manager.broadphase
+        for fixture in list(self.fixtures):
+            if world._fixture_destruction_listener:
+                world._fixture_destruction_listener(fixture)
+
+            fixture._destroy_proxies(broadphase)
+
         broadphase = self._broadphase
+
         for fixture in self.fixtures:
             fixture._destroy_proxies(broadphase)
 
-        # Destroy the attached contacts
-        for contact in self._contacts:
-            self._world.contact_manager.destroy(contact)
+        # Remove the controller connections
+        for controller in self._controllers:
+            controller.remove_body(self)
 
         self._world = None
+
+    def _attached_to_controller(self, controller):
+        """The controller tells us when the body has been added to it"""
+        self._controllers.append(controller)
+
+    def _detached_from_controller(self, controller):
+        self._controllers.remove(controller)
 
     @property
     def dynamic(self):
@@ -574,7 +601,7 @@ fixtures=%s)""" % info
         self._sweep.c = copy(self._sweep.c0)
 
         # Update center of mass velocity.
-        self._linear_velocity += self.angular_velocity.cross(self._sweep.c - old_center)
+        self._linear_velocity += scalar_cross(self.angular_velocity, self._sweep.c - old_center)
 
     def reset_mass_data(self):
         """
@@ -670,7 +697,7 @@ fixtures=%s)""" % info
         @param a point in world coordinates.
         @return the world velocity of a point.
         """
-        return self._linear_velocity + self._angular_velocity.cross(world_point - self._sweep.c)
+        return self._linear_velocity + scalar_cross(self._angular_velocity, world_point - self._sweep.c)
 
     def get_linear_velocity_from_local_point(self, local_point):
         """

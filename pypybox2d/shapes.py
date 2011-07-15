@@ -101,6 +101,18 @@ class Shape(object):
         """
         return NotImplementedError # Abstract
 
+    def compute_submerged_area(self, normal, offset, xf):
+        """
+        Compute the volume and centroid of this shape intersected with 
+        a half plane.
+        @param normal the surface normal
+        @param offset the surface offset along normal
+        @param xf the shape transform
+        @return (vol, centroid), where vol is the total volume less than 
+        offset along normal
+        """
+        return NotImplementedError # Abstract
+
     @property
     def vertex_count(self):
         return NotImplementedError # Abstract
@@ -199,6 +211,26 @@ class Circle(Shape):
     @property
     def vertices(self):
         return [copy(self.position)]
+
+    def compute_submerged_area(self, normal, offset, xf):
+        p = xf * self.position
+        radius = self.radius
+        l = -(normal.dot(p) - offset)
+        if l < -radius + EPSILON:
+            # Completely dry
+            return 0.0, Vec2(0.0, 0.0)
+        elif l > radius:
+            # Completely wet
+            c = Vec2(*self.position)
+            return PI * radius**2, c
+
+        # Magic
+        r2 = radius ** 2
+        l2 = l ** 2
+        area = r2 * (math.asin(l / radius) + PI / 2.0) + l * math.sqrt(r2 - l2)
+        com = -2.0 / 3.0 * pow(r2 - l2, 1.5) / area
+        c = p + normal * com
+        return area, c
 
 class Polygon(Shape):
     CHECK_VERTICES = True

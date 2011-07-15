@@ -36,6 +36,7 @@ from .body import Body
 from .shapes import (Circle, Polygon, Edge, Loop)
 from .joints import (DistanceJoint, RevoluteJoint, FrictionJoint, PrismaticJoint,
                     WeldJoint, RopeJoint, WheelJoint, MouseJoint, PulleyJoint, GearJoint)
+from .controllers import (Controller, BuoyancyController)
 from .common import (
             # Exceptions
            PhysicsError, LockedError, EmptyFixtureError,
