@@ -149,7 +149,7 @@ class CollisionProcessing (Framework):
         
         # Destroy the bodies, skipping duplicates.
         for b in nuke:
-            print("Nuking:", b.user_data)
+            print("Nuking: %s" % b.user_data)
             self.world.destroy_body(b)
         
         nuke = None

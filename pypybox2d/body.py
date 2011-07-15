@@ -90,7 +90,7 @@ class Body(object):
         self._type = type
         self._active = active
 
-        self._sweep.local_center.zero()
+        self._sweep.local_center = Vec2()
         self._sweep.a0 = self._sweep.a = angle
         self._sweep.c0 = self._xf * self._sweep.local_center
         self._sweep.c = copy(self._sweep.c0)
@@ -540,7 +540,7 @@ fixtures=%s)""" % info
         if self._type != Body.DYNAMIC:
             return
         if not self.awake:
-            self.awake=True
+            self.awake = True
 
         self._angular_velocity += self._invI * impulse
 
@@ -610,11 +610,11 @@ fixtures=%s)""" % info
         the mass and you later want to reset the mass.
         """
         # Compute mass data from shapes. Each shape has its own density.
-        self._mass=0.0
-        self._inv_mass=0.0
-        self._I=0.0
-        self._invI=0.0
-        self._sweep.local_center.zero()
+        self._mass = 0.0
+        self._inv_mass = 0.0
+        self._I = 0.0
+        self._invI = 0.0
+        self._sweep.local_center = Vec2()
 
         if self._type in (Body.STATIC, Body.KINEMATIC):
             self._sweep.c = self._xf.position
@@ -640,10 +640,10 @@ fixtures=%s)""" % info
             # Force all dynamic bodies to have a positive mass.
             self._mass = 1.0
             self._inv_mass = 1.0
-        
+       
         if self._I > 0.0 and not self._fixed_rotation:
             # Center the inertia about the center of mass.
-            self._I -= self._mass * (center.dot(center))
+            self._I -= self._mass * center.length_squared
             assert(self._I > 0.0)
             self._invI = 1.0 / self._I
         else:
@@ -751,11 +751,11 @@ fixtures=%s)""" % info
         self.reset_mass_data()
 
         if _type == Body.STATIC:
-            self._linear_velocity.zero()
+            self._linear_velocity = Vec2()
             self._angular_velocity = 0.0
 
         self.awake = True
-        self._force.zero()
+        self._force = Vec2()
         self._torque = 0.0
 
         # Since the body type changed, we need to flag contacts for filtering.
@@ -804,9 +804,9 @@ fixtures=%s)""" % info
                 self._sleep_time=0.0
         else:
             self._sleep_time=0.0
-            self._linear_velocity.zero()
+            self._linear_velocity = Vec2()
             self._angular_velocity = 0.0
-            self._force.zero()
+            self._force = Vec2()
             self._torque = 0.0
 
         self._awake=awake

@@ -540,17 +540,16 @@ def shape_distance(proxy_a, proxy_b, transform_a, transform_b, use_radii, cache=
 
     # Apply radii if requested.
     if use_radii:
-        r_a = proxy_a._radius
-        r_b = proxy_b._radius
+        ra = proxy_a._radius
+        rb = proxy_b._radius
 
-        if distance_ > (r_a + r_b) and distance_ > EPSILON:
+        if distance_ > (ra + rb) and distance_ > EPSILON:
             # Shapes are still not overlapped.
             # Move the witness points to the outer surface.
-            distance_ -= r_a + r_b
-            normal = point_b - point_a
-            normal.normalize()
-            point_a += r_a * normal
-            point_b -= r_b * normal
+            distance_ -= ra + rb
+            normal = (point_b - point_a).normalized
+            point_a += ra * normal
+            point_b -= rb * normal
         else:
             # Shapes are overlapped when radii are considered.
             # Move the witness points to the middle.

@@ -26,7 +26,7 @@ __date__ = "$Date$"
 
 import weakref
 from copy import copy
-from .common import (Vec2, AABB, scalar_cross, min_vector, max_vector, is_power_of_two, property)
+from .common import (Vec2, AABB, scalar_cross, min_vector, max_vector, is_power_of_two, AABB, property)
 from .settings import (AABB_EXTENSION, AABB_MULTIPLIER, MAX_FLOAT)
 
 class TreeNode(object):
@@ -121,9 +121,9 @@ class DynamicTree(object):
         node = self._allocate_node()
         # Fatten the AABB
         r = Vec2(AABB_EXTENSION, AABB_EXTENSION)
-        node.aabb = copy(aabb)
-        node.aabb.lower_bound -= r
-        node.aabb.upper_bound += r
+        node.aabb = AABB()
+        node.aabb.lower_bound = aabb.lower_bound - r
+        node.aabb.upper_bound = aabb.upper_bound + r
         node.height = 0
         if use_weakref:
             node._user_data = weakref.ref(user_data)
@@ -168,8 +168,8 @@ class DynamicTree(object):
         # Extend AABB
         b = copy(aabb)
         r = Vec2(AABB_EXTENSION, AABB_EXTENSION)
-        b.lower_bound -= r
-        b.upper_bound += r
+        b.lower_bound = b.lower_bound - r
+        b.upper_bound = b.upper_bound + r
 
         # Predict AABB displacement.
         d = AABB_MULTIPLIER * displacement
@@ -223,7 +223,7 @@ class DynamicTree(object):
         r = p2 - p1
         if r.length_squared <= 0.0:
             raise ValueError('||p2 - p1||^2 > 0.0')
-        r.normalize()
+        r = r.normalized
 
         # v is perpendicular to the segment
         v = scalar_cross(1.0, r)
@@ -352,7 +352,7 @@ class DynamicTree(object):
             parent.child1 = child1
             parent.child2 = child2
             parent.height = 1 + max(child1.height, child2.height)
-            parent.aabb.combine_two(child1.aabb, child2.aabb)
+            parent.aabb = (child1.aabb + child2.aabb)
             parent.parent = None
 
             child1.parent = parent
@@ -493,7 +493,7 @@ class DynamicTree(object):
             assert(child1 is not None)
             assert(child2 is not None)
             node.height = 1 + max(child1.height, child2.height)
-            node.aabb.combine_two(child1.aabb, child2.aabb)
+            node.aabb = (child1.aabb + child2.aabb)
 
             node = node.parent
 
@@ -528,7 +528,7 @@ class DynamicTree(object):
             while node:
                 node = self._balance(node)
                 child1, child2 = node.child1, node.child2
-                node.aabb.combine_two(child1.aabb, child2.aabb)
+                node.aabb = (child1.aabb + child2.aabb)
                 node.height = 1 + max(child1.height, child2.height)
                 
                 node = node.parent
@@ -580,8 +580,8 @@ class DynamicTree(object):
                 c.child2 = f
                 a.child2 = g
                 g.parent = a
-                a.aabb.combine_two(b.aabb, g.aabb)
-                c.aabb.combine_two(a.aabb, f.aabb)
+                a.aabb = b.aabb + g.aabb
+                c.aabb = a.aabb + f.aabb
 
                 a.height = 1 + max(b.height, g.height)
                 c.height = 1 + max(a.height, f.height)
@@ -589,8 +589,8 @@ class DynamicTree(object):
                 c.child2 = g
                 a.child2 = f
                 f.parent = a
-                a.aabb.combine_two(b.aabb, f.aabb)
-                c.aabb.combine_two(a.aabb, g.aabb)
+                a.aabb = b.aabb + f.aabb
+                c.aabb = a.aabb + g.aabb
 
                 a.height = 1 + max(b.height, f.height)
                 c.height = 1 + max(a.height, g.height)
@@ -622,8 +622,8 @@ class DynamicTree(object):
                 b.child2 = d
                 a.child1 = e
                 e.parent = a
-                a.aabb.combine_two(c.aabb, e.aabb)
-                b.aabb.combine_two(a.aabb, d.aabb)
+                a.aabb = c.aabb + e.aabb
+                b.aabb = a.aabb + d.aabb
 
                 a.height = 1 + max(c.height, e.height)
                 b.height = 1 + max(a.height, d.height)
@@ -632,8 +632,8 @@ class DynamicTree(object):
                 b.child2 = e
                 a.child1 = d
                 d.parent = a
-                a.aabb.combine_two(c.aabb, d.aabb)
-                b.aabb.combine_two(a.aabb, e.aabb)
+                a.aabb = c.aabb + d.aabb
+                b.aabb = a.aabb + e.aabb
 
                 a.height = 1 + max(c.height, d.height)
                 b.height = 1 + max(a.height, e.height)

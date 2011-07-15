@@ -520,6 +520,7 @@ class ContactSolver(object):
 
                 wb += inv_I_b * rb.cross(p)
                 vb += inv_mass_b * p
+
             velocities[index_a] = (va, wa)
             velocities[index_b] = (vb, wb)
 

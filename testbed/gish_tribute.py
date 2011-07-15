@@ -65,7 +65,8 @@ def add_spring_force(body_a, local_a, body_b, local_b, force_k, friction, desire
     vel_b = body_b.linear_velocity - body_b.get_world_vector(local_b).cross(body_b.angular_velocity)
 
     vdiff=vel_b-vel_a
-    dx = diff.normalize() # Normalizes diff and puts length into dx
+    dx = diff.length
+    diff = diff.normalized
     vrel = vdiff.x*diff.x + vdiff.y*diff.y
     force_mag = -force_k*(dx-desired_dist) - friction*vrel
 

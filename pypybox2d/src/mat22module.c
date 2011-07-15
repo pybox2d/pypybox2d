@@ -526,15 +526,15 @@ static PyMethodDef Mat22_methods[] = {
     {"copy", (PyCFunction)Mat22_copy, METH_NOARGS,
      "Copy the matrix"
     },
-    {"zero", (PyCFunction)Mat22_set_zero, METH_NOARGS,
+    /*{"zero", (PyCFunction)Mat22_set_zero, METH_NOARGS,
      "Zero the matrix [0 0; 0 0]"
     },
     {"set_identity", (PyCFunction)Mat22_set_identity, METH_NOARGS,
      "Identity matrix [1 0; 0 1]"
-    },
-    {"set", (PyCFunction)Mat22_set, METH_VARARGS,
+    },*/
+    /*{"set", (PyCFunction)Mat22_set, METH_VARARGS,
      "Set the columns, given col1, col2"
-    },
+    },*/
     {"solve", (PyCFunction)Mat22_solve, METH_O,
      "Solve A * x = vec, a column vector. This is more efficient "
      "than computing the inverse in one-shot cases."
@@ -576,19 +576,19 @@ static PyGetSetDef Mat22_getseters[] = {
 };
 
 static PyNumberMethods Mat22_as_number = {
-    (binaryfunc)Mat22_add,            /*nb_add*/
-    (binaryfunc)Mat22_sub,            /*nb_subtract*/
-    (binaryfunc)Mat22_mul,            /*nb_multiply*/
+    (binaryfunc)Mat22_add,           /*nb_add*/
+    (binaryfunc)Mat22_sub,           /*nb_subtract*/
+    (binaryfunc)Mat22_mul,           /*nb_multiply*/
 #ifndef IS_PY3K
     0,                               /*nb_divide*/
 #endif
     0,                               /*nb_remainder*/
     0,                               /*nb_divmod*/
     0,                               /*nb_power*/
-    (unaryfunc)Mat22_neg,             /*nb_negative*/
-    (unaryfunc)Mat22_copy,            /*tp_positive*/
-    (unaryfunc)Mat22_abs,             /*tp_absolute*/
-    (inquiry)Mat22_nonzero,           /*tp_nonzero*/
+    (unaryfunc)Mat22_neg,            /*nb_negative*/
+    (unaryfunc)Mat22_copy,           /*tp_positive*/
+    (unaryfunc)Mat22_abs,            /*tp_absolute*/
+    (inquiry)Mat22_nonzero,          /*tp_nonzero*/
     0,                               /*nb_invert*/
     0,                               /*nb_lshift*/
     0,                               /*nb_rshift*/
@@ -605,8 +605,8 @@ static PyNumberMethods Mat22_as_number = {
     0,                               /*nb_oct*/
     0,                               /*nb_hex*/
 #endif
-    (binaryfunc)Mat22_iadd,          /* nb_inplace_add */
-    (binaryfunc)Mat22_isub,          /* nb_inplace_subtract */
+    0, //(binaryfunc)Mat22_iadd,          /* nb_inplace_add */
+    0, //(binaryfunc)Mat22_isub,          /* nb_inplace_subtract */
     0,                               /* nb_inplace_multiply */
 #ifndef IS_PY3K
     0,                               /* nb_inplace_divide */

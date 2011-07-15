@@ -213,8 +213,7 @@ class WorldManifold(object):
             point_a = xf_a * manifold.local_point
             point_b = xf_b * manifold.points[0].local_point
             if distance_squared(point_a, point_b) > EPSILON_SQR:
-                normal = point_b - point_a
-                normal.normalize()
+                normal = (point_b - point_a).normalized
 
             c_a = point_a + radius_a * normal
             c_b = point_b - radius_b * normal
@@ -331,8 +330,7 @@ class ContactPositionConstraint(object):
         if type_ == Manifold.CIRCLES:
             point_a = xf_a * self.local_point
             point_b = xf_b * self.local_points[0]
-            normal = point_b - point_a
-            normal.normalize()
+            normal = (point_b - point_a).normalized
 
             point = 0.5 * (point_a + point_b)
             separation = (point_b - point_a).dot(normal) - radius_a - radius_b

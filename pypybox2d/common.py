@@ -24,7 +24,7 @@ __date__ = "$Date$"
 # $Source$
 
 import math
-from .settings import (EPSILON, MAX_FLOAT)
+from .settings import (EPSILON, MAX_FLOAT, USE_PURE_PYTHON)
 from sys import version_info, exc_info
 
 __all__ = (# Exceptions
@@ -80,7 +80,6 @@ else:
 
 del version_info
 PI = math.pi
-USE_PURE_PYTHON = False
 
 class PhysicsError(Exception): pass
 class LockedError(PhysicsError): pass
@@ -104,38 +103,13 @@ class PyVec2(object):
     def __copy__(self):
         return Vec2(self.x, self.y)
     copy = __copy__
-    def __iadd__(self, other):
-        ox, oy = other
-        self.x += ox
-        self.y += oy
-        return self
     def __add__(self, other):
-        return Vec2(self.x+other[0], self.y+other[1])
+        ox, oy = other
+        return Vec2(self.x+ox, self.y+oy)
     def __sub__(self, other):
         return Vec2(self.x-other[0], self.y-other[1])
     def __rsub__(self, other):
         return Vec2(other[0]-self.x, other[1]-self.y)
-    def __isub__(self, other):
-        ox, oy = other
-        self.x -= ox
-        self.y -= oy
-        return self
-    def __imul__(self, other):
-        if isinstance(other, NUMBER_TYPES):
-            self.x *= other
-            self.y *= other
-        else:
-            self.x *= other[0]
-            self.y *= other[1]
-        return self
-    def __itruediv__(self, other):
-        if isinstance(other, NUMBER_TYPES):
-            self.x /= other
-            self.y /= other
-        else:
-            self.x /= other[0]
-            self.y /= other[1]
-        return self
     def __mul__(self, value):
         if isinstance(value, NUMBER_TYPES):
             return Vec2(value*self.x, value*self.y)
@@ -203,7 +177,6 @@ class PyVec2(object):
         return [self.x, self.y]
     def __setstate__(self, value):
         self.x, self.y = value
-    __idiv__=__itruediv__
     __rmul__=__mul__
     __truediv__=__div__
     __radd__=__add__
@@ -219,14 +192,6 @@ class PyVec2(object):
     def valid(self):
         return is_valid_float(self.x) and is_valid_float(self.y)
 
-    def set(self, x, y):
-        """
-        Set the vector, copying the elements passed in.
-        """
-        self.x, self.y=float(x), float(y)
-    def zero(self):
-        """Zero the vector"""
-        self.x, self.y=0.0, 0.0
     def _scalar_cross(self, value):
         """
         scalar x vector
@@ -248,14 +213,14 @@ class PyVec2(object):
     def dot(self, value):
         vx, vy = value
         return self.x * float(vx) + self.y * float(vy)
-    def normalize(self):
+    @property
+    def normalized(self):
         length=self.length
         if length < EPSILON:
-            return 0.0
+            return Vec2(*self)
         inv_length=1.0 / length
-        self.x*=inv_length
-        self.y*=inv_length
-        return length
+        return Vec2(self.x * inv_length, self.y * inv_length)
+
     def skew(self):
         return Vec2(-self.y, self.x)
 
@@ -279,49 +244,15 @@ class Vec3(object):
     def __copy__(self):
         return Vec3(self.x, self.y, self.z)
     copy = __copy__
-    def __iadd__(self, other):
-        vx, vy, vz = other
-        self.x += vx
-        self.y += vy
-        self.z += vz
-        return self
     def __add__(self, other):
         vx, vy, vz = other
         return Vec3(self.x+vx, self.y+vy, self.z+vz)
     def __sub__(self, other):
         vx, vy, vz = other
         return Vec3(self.x-vx, self.y-vy, self.z-vz)
-    def __isub__(self, other):
-        vx, vy, vz = other
-        self.x -= vx
-        self.y -= vy
-        self.z -= vz
-        return self
     def __rsub__(self, other):
         vx, vy, vz = other
         return Vec3(vx-self.x, vy-self.y, vz-self.z)
-    def __imul__(self, other):
-        if isinstance(other, NUMBER_TYPES):
-            self.x *= other
-            self.y *= other
-            self.z *= other
-        else:
-            vx, vy, vz = other
-            self.x *= vx
-            self.y *= vy
-            self.z *= vz
-        return self
-    def __itruediv__(self, other):
-        if isinstance(other, NUMBER_TYPES):
-            self.x /= other
-            self.y /= other
-            self.z /= other
-        else:
-            vx, vy, vz = other
-            self.x /= vx
-            self.y /= vy
-            self.z /= vz
-        return self
     def __mul__(self, value):
         if isinstance(value, NUMBER_TYPES):
             return Vec3(value*self.x, value*self.y, value*self.z)
@@ -393,7 +324,6 @@ class Vec3(object):
         return [self.x, self.y, self.z]
     def __setstate__(self, value):
         self.x, self.y, self.z=value
-    __idiv__=__itruediv__
     __rmul__=__mul__
     __truediv__=__div__
     __rtruediv__=__rdiv__
@@ -409,26 +339,17 @@ class Vec3(object):
     def valid(self):
         return is_valid_float(self.x) and is_valid_float(self.y) and is_valid_float(self.z)
 
-    def set(self, x, y, z):
-        """
-        Set the vector, copying the elements passed in.
-        """
-        self.x, self.y, self.z = x, y, z
-    def zero(self):
-        """Zero the vector"""
-        self.x, self.y, self.z = 0.0, 0.0, 0.0
     def dot(self, value):
         vx, vy, vz = value
         return (self.x * float(vx)) + (self.y * float(vy)) + (self.z * float(vz))
-    def normalize(self):
-        length = self.length
+    @property
+    def normalized(self):
+        length=self.length
         if length < EPSILON:
-            return 0.0
-        inv_length = 1.0 / length
-        self.x *= inv_length
-        self.y *= inv_length
-        self.z *= inv_length
-        return length
+            return Vec3(*self)
+        inv_length=1.0 / length
+        return Vec3(self.x * inv_length, self.y * inv_length, self.z * inv_length)
+
     def cross(self, other):
         vx, vy, vz = other
         sx, sy, sz = self
@@ -493,16 +414,8 @@ class PyMat22(object):
         return Mat22(abs(self._col1), abs(self._col2))
     def __add__(self, other):
         return Mat22(self._col1 + other[0], self._col2 + other[1])
-    def __iadd__(self, other):
-        self._col1 += other[0]
-        self._col2 += other[1]
-        return self
     def __sub__(self, other):
         return Mat22(self._col1 - other[0], self._col2 - other[1])
-    def __isub__(self, other):
-        self._col1 -= other[0]
-        self._col2 -= other[1]
-        return self
     def __eq__(self, other):
         try:
             return (self._col1==other[0] and self._col2==other[1])
@@ -550,19 +463,6 @@ class PyMat22(object):
             self._col2=Vec2(*value)
         else:
             raise IndexError('Index must be in (0,1)')
-
-    def set(self, other, col2=None):
-        """
-        Set the matrix in-place, copying the elements passed in.
-
-        Can be used as .set(Transform()) or .set(col1, col2)
-        """
-        if col2 is not None:
-            self._col1=Vec2(*other)
-            self._col2=Vec2(*col2)
-        else:
-            self._col1=Vec2(*other.col1)
-            self._col2=Vec2(*other.col2)
 
     def mul_tv(self, other):
         """
@@ -630,22 +530,6 @@ class PyMat22(object):
         return Vec2(det * (d * vec[0] - b * vec[1]),
                     det * (a * vec[1] - c * vec[0]))
 
-    def set_identity(self):
-        """
-        [ 1 0
-          0 1 ]
-        """
-        self._col1.x=1.0; self._col2.x=0.0
-        self._col1.y=0.0; self._col2.y=1.0
-
-    def zero(self):
-        """
-        [ 0 0
-          0 0 ]
-        """
-        self._col1.x=0.0; self._col2.x=0.0
-        self._col1.y=0.0; self._col2.y=0.0
-
 class Mat33(object):
     """
     3x3 matrix, stored in column-major order.
@@ -699,41 +583,6 @@ class Mat33(object):
             self.col3=Vec3(*value)
         else:
             raise IndexError('Index must be in (0,1,2)')
-
-    def set(self, other, col2=None, col3=None):
-        """
-        Set the matrix, copying the elements passed in.
-
-        Can be used as .set(Transform()) or .set(col1, col2)
-        """
-        if col2 is not None and col3 is not None:
-            self.col1=Vec3(*other)
-            self.col2=Vec3(*col2)
-            self.col2=Vec3(*col3)
-        else:
-            self.col1=Vec3(*other.col1)
-            self.col2=Vec3(*other.col2)
-            self.col3=Vec3(*other.col3)
-
-    def set_identity(self):
-        """
-        [ 1 0 0
-          0 1 0
-          0 0 1 ]
-        """
-        self.col1.x=1.0; self.col2.x=0.0; self.col3.x=0.0
-        self.col1.y=0.0; self.col2.y=1.0; self.col3.y=0.0
-        self.col1.z=0.0; self.col2.z=0.0; self.col3.z=1.0
-
-    def zero(self):
-        """
-        [ 0 0 0 
-          0 0 0
-          0 0 0 ]
-        """
-        self.col1.x=0.0; self.col2.x=0.0; self.col3.x=0.0
-        self.col1.y=0.0; self.col2.y=0.0; self.col3.y=0.0
-        self.col1.z=0.0; self.col2.z=0.0; self.col3.z=0.0
 
     def solve3x3(self, b):
         """
@@ -810,11 +659,6 @@ class PyTransform(object):
         return 'Transform(position=%s, angle=%g)' % (
                 self._position, self._rotation.angle)
 
-    def set_identity(self):
-        """Set this to the identity transform."""
-        self._position=(0,0)
-        self._rotation.set_identity()
-
     def mul_t(self, other):
         """
         Transpose multiplication.
@@ -876,7 +720,7 @@ class PyAABB(object):
         return Vec2(*self._lower_bound)
     @lower_bound.setter
     def lower_bound(self, value):
-        self._lower_bound.set(*value)
+        self._lower_bound = Vec2(*value)
 
     def __getstate__(self):
         return [self._lower_bound, self._upper_bound]
@@ -888,12 +732,12 @@ class PyAABB(object):
         return Vec2(*self._upper_bound)
     @upper_bound.setter
     def upper_bound(self, value):
-        self._upper_bound.set(*value)
+        self._upper_bound = Vec2(*value)
 
     @property
     def valid(self):
-        d=self._upper_bound-self._lower_bound
-        area_valid=(d.x >= 0.0 and d.y >= 0.0)
+        d = self._upper_bound - self._lower_bound
+        area_valid = (d.x >= 0.0 and d.y >= 0.0)
         return area_valid and self._lower_bound.valid and self._upper_bound.valid
 
     __iter__ = lambda self: iter((self._lower_bound, self._upper_bound))
@@ -901,9 +745,9 @@ class PyAABB(object):
         return 2
     def __getitem__(self, i):
         if i==0:
-            return self._lower_bound
+            return Vec2(*self._lower_bound)
         elif i==1:
-            return self._upper_bound
+            return Vec2(*self._upper_bound)
         else:
             raise IndexError('Index must be in (0,1)')
     def __setitem__(self, i, value):
@@ -965,7 +809,7 @@ class PyAABB(object):
 
                 # Push the min up
                 if t1 > tmin:
-                    normal.zero()
+                    normal = Vec2()
                     normal[i] = s
                     tmin = t1
 
@@ -1011,20 +855,6 @@ class PyAABB(object):
         wy = self._upper_bound.y - self._lower_bound.y
         return 2.0 * (wx + wy)
 
-    def combine(self, aabb):
-        """Combine an AABB into this one."""
-        self._lower_bound = min_vector(self._lower_bound, aabb._lower_bound)
-        self._upper_bound = max_vector(self._upper_bound, aabb._upper_bound)
-        return self
-
-    __iadd__=combine
-
-    def combine_two(self, aabb1, aabb2):
-        """Combine two AABBs into this one, ignoring the current AABB."""
-        self._lower_bound = min_vector(aabb1._lower_bound, aabb2._lower_bound)
-        self._upper_bound = max_vector(aabb1._upper_bound, aabb2._upper_bound)
-        return self
-
     def __add__(self, other):
         ret=AABB(min_vector(self._lower_bound, other._lower_bound),
                  max_vector(self._upper_bound, other._upper_bound))
@@ -1032,12 +862,10 @@ class PyAABB(object):
 
     def contains(self, aabb):
         """Does this aabb contain the provided AABB?"""
-        result = True
-        result = result and (self._lower_bound.x <= aabb._lower_bound.x)
-        result = result and (self._lower_bound.y <= aabb._lower_bound.y)
-        result = result and (aabb._upper_bound.x <= self._upper_bound.x)
-        result = result and (aabb._upper_bound.y <= self._upper_bound.y)
-        return result
+        return ((self._lower_bound.x <= aabb._lower_bound.x) and
+                (self._lower_bound.y <= aabb._lower_bound.y) and
+                (aabb._upper_bound.x <= self._upper_bound.x) and
+                (aabb._upper_bound.y <= self._upper_bound.y))
 
 class Sweep(object):
     """
@@ -1074,7 +902,7 @@ class Sweep(object):
                        angle=(1.0 - beta) * self.a0 + beta * self.a)
         
         # Shift to origin
-        xf.position -= xf._rotation * self.local_center
+        xf.position = xf.position - xf._rotation * self.local_center
         return xf
 
     def advance(self, alpha):
@@ -1125,13 +953,13 @@ def distance_squared(p1, p2):
 
 try:
     if USE_PURE_PYTHON:
-        raise
+        raise Exception('USE_PURE_PYTHON set')
+    print('Using C extension')
     from ._common import Vec2
     from ._common import (scalar_cross, min_vector, max_vector, clamp, clamp_vector)
     from ._common import Mat22
     from ._common import Transform
     from ._common import AABB
-    print('Using C extension')
 except:
     import sys
     print('Using Pure Python (%s: %s)' % exc_info()[:2])
@@ -1149,125 +977,3 @@ except:
         return max_vector(low, min_vector(value, high))
     def clamp(value, low, high):
         return max(low, min(value, high))
-
-if __name__=='__main__':
-    a=Vec2()
-    b=Vec2(2.5,3.1)
-    assert(b == (2.5, 3.1))
-    b=Vec2(*b)
-    assert(b == (2.5, 3.1))
-    c=Vec2(*a)
-    print(a, b, c)
-    assert(b.dot(b) == b*b)
-    assert(b.dot(b) == (2.5**2 + 3.1**2))
-    b+=Vec2(1,2)
-    assert(b == (3.5, 5.1))
-    b+=(1,1)
-    assert(b == (4.5, 6.1))
-    b*=2
-    assert(b == (9, 12.2))
-    a=Vec2(-1, -1)
-    assert(abs(a) == (1, 1))
-    assert((b*2)/2 == b)
-    assert(0.5 * (b*2) == b)
-    b/=2
-    assert(b == (4.5, 6.1))
-
-    a=Vec2(3, 3)
-    a//=2
-    assert(a == (1, 1))
-    assert(a[0] == 1 and a[1] == 1)
-    a[0]=2.0
-    assert(a[0] == 2 and a[1] == 1)
-
-    a=Vec2(1,1)
-    b=Vec2(3,2)
-    assert(a.cross(b) == (1*2 - 1*3))
-    print(scalar_cross(1, b))
-    assert(scalar_cross(1, b) == (-1.0 * 2.0, 1.0 * 3.0))
-    assert(scalar_cross(1.0, b) == (-1.0 * 2.0, 1.0 * 3.0))
-
-    a=Vec3()
-    b=Vec3(2.5,3.1,1.0)
-    assert(b == (2.5, 3.1, 1.0))
-    b=Vec3(*b)
-    assert(b == (2.5, 3.1, 1.0))
-    c=Vec3(*a)
-    assert(a+b == b)
-    assert(a+c == c)
-    assert(b+c == c+b)
-    assert(b.dot(b) == b*b)
-    assert(b.dot(b) == (2.5**2 + 3.1**2 + 1.0))
-    b+=Vec3(1,2,3)
-    assert(b == (3.5,5.1,4))
-    b+=(1,1,3)
-    assert(b == (4.5,6.1,7))
-    b*=2
-    assert((b*2)/2 == b)
-    b/=2
-    assert(b == (4.5,6.1,7))
-
-    a=Mat22()
-    a.angle=45 * PI / 180.0
-    assert(a.angle*180.0/PI == 45)
-
-    a=Mat22()
-    print(a)
-    assert(a.solve([1,1])==(1,1))
-    assert(a.inverse == a)
-    a=Mat33()
-    print(a)
-    assert(a.solve2x2([1,1])==(1,1))
-    assert(is_power_of_two(256))
-    assert(not is_power_of_two(55))
-    assert(next_power_of_two(2) == 4)
-    assert(next_power_of_two(8) == 16)
-
-    a=AABB((-1, -1), (1, 1))
-    print(a)
-    assert(a.ray_cast((-2,0), (-1, 0), 1.0) == (True, (-1,0), 1.0))
-    assert(a.center == (0, 0))
-    assert(a.perimeter == 2*4)
-    a.extents
-    b=AABB((-0.5, -0.5), (0.5, 0.5))
-    assert(a.contains(b))
-    assert(not b.contains(a))
-    
-    c=a + b
-    assert(c == a)
-    assert(c != b)
-
-    assert((1,1) + Vec2(1,1) == (2, 2))
-    assert((1,1) - Vec2(1,1) == (0, 0))
-    assert(2.0 / Vec2(1,1) == (2, 2))
-    assert(2.0 * Vec2(1,1) == (2, 2))
-    assert(Vec2(1,1) + (1,1) == (2,2))
-    assert(Vec2(1,1) - (1,1) == (0,0))
-    assert(Vec2(1,1) / 2.0 == (0.5,0.5))
-    assert(Vec2(1,1) // 2.0 == (0,0))
-    assert(Vec2(1,1) * 2.0 == (2,2))
-    assert(-Vec2(1,1) == (-1,-1))
-
-    assert((1,1,1) + Vec3(1,1,1) == (2,2,2))
-    assert((1,1,1) - Vec3(1,1,1) == (0,0,0))
-    assert(2.0 / Vec3(1,1,1) == (2,2,2))
-    assert(2.0 * Vec3(1,1,1) == (2,2,2))
-    assert(Vec3(1,1,1) + (1,1,1) == (2,2,2))
-    assert(Vec3(1,1,1) - (1,1,1) == (0,0,0))
-    assert(Vec3(1,1,1) / 2.0 == (0.5,0.5,0.5))
-    assert(Vec3(1,1,1) // 2.0 == (0,0,0))
-    assert(Vec3(1,1,1) * 2.0 == (2,2,2))
-    assert(-Vec3(1,1,1) == (-1,-1,-1))
-    a=Vec2(1, 1)
-    b=Vec2(0, 0)
-    assert(Vec2(1, 1) == Vec2(1, 1))
-    assert(Vec2(1, 1) != Vec2(0, 0))
-    assert(Vec3(1, 1, 1) == Vec3(1, 1, 1))
-    assert(Vec3(1, 1, 1) != Vec3(0, 0, 0))
-    assert(AABB(a, b) != AABB(b, a))
-    assert(AABB(a, b) == AABB(a, b))
-
-    assert(Mat33((1, 0, 0), (0, 1, 0), (0, 0, 1)) * Vec3(0, 0, 0) == (0, 0, 0))
-    assert(Mat33((1, 0, 0), (0, 1, 0), (0, 0, 1)) * Vec3(1, 2, 3) == (1, 2, 3))
-    assert(Mat22((1, 0), (0, 1)) * Vec2(0, 0) == (0, 0))
-    assert(Mat22((1, 0), (0, 1)) * Vec2(1, 1) == (1, 1))

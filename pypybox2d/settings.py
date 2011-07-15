@@ -127,3 +127,9 @@ DEBUG_SOLVER = False
 
 # Distance
 DISTANCE_MAX_ITERS = 20
+
+# If USE_PURE_PYTHON is set, the C libraries for Vec2, AABB, and so on
+# will be ignored, and the Python implementations in common.py will be
+# used.
+USE_PURE_PYTHON = False
+

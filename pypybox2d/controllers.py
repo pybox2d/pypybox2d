@@ -208,7 +208,7 @@ class BuoyancyController(Controller):
 
                 # Linear drag
                 lin_vel = body.get_linear_velocity_from_world_point(area_c)
-                print((area_c - body.world_center).length)
+                #print((area_c - body.world_center).length)
                 drag_force = (lin_vel - self._velocity) * (-self._linear_drag * area)
                 #print((lin_vel - self._velocity), (-self._linear_drag * area), drag_force)
                 body.apply_force(drag_force, area_c)

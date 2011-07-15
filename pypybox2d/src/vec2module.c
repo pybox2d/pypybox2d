@@ -445,6 +445,20 @@ Vec2_normalize(Vec2 *self, PyObject* args)
 }
 
 static PyObject *
+Vec2_normalized(Vec2 *self, PyObject* args)
+{
+    double length=sqrt((self->x * self->x) + (self->y * self->y));
+    double inv_length;
+
+    if (length < FLT_EPSILON) {
+        return new_Vec2(self->x, self->y);
+    }
+
+    inv_length=1.0 / length;
+    return new_Vec2(self->x * inv_length, self->y * inv_length);
+}
+
+static PyObject *
 Vec2_skew(Vec2 *self, PyObject *other)
 {
     return new_Vec2(-self->y, self->x);
@@ -550,9 +564,9 @@ static PyMethodDef Vec2_methods[] = {
      "Cross product"
     },
     {"_scalar_cross", (PyCFunction)Vec2_scalar_cross, METH_O,
-     "Scalar x vector"
+     "Scalar x this vector"
     },
-    {"zero", (PyCFunction)Vec2_zero, METH_NOARGS,
+    /*{"zero", (PyCFunction)Vec2_zero, METH_NOARGS,
      "Set vector to (0, 0)"
     },
     {"set", (PyCFunction)Vec2_set, METH_VARARGS,
@@ -560,7 +574,7 @@ static PyMethodDef Vec2_methods[] = {
     },
     {"normalize", (PyCFunction)Vec2_normalize, METH_NOARGS,
      "Normalize vector and return length"
-    },
+    },*/
     {"skew", (PyCFunction)Vec2_skew, METH_NOARGS,
      "Get the skew of the vector: (-y, x)"
     },
@@ -570,6 +584,10 @@ static PyMethodDef Vec2_methods[] = {
 /*** End methods ***/
 
 static PyGetSetDef Vec2_getseters[] = {
+    {"normalized", 
+     (getter)Vec2_normalized, NULL,
+     "Return a normalized version of this vector",
+     NULL},
     {"length", 
      (getter)Vec2_length, NULL,
      "Vector length",
@@ -615,11 +633,11 @@ static PyNumberMethods Vec2_as_number = {
     0,                               /*nb_oct*/
     0,                               /*nb_hex*/
 #endif
-    (binaryfunc)Vec2_iadd,           /* nb_inplace_add */
-    (binaryfunc)Vec2_isub,           /* nb_inplace_subtract */
-    (binaryfunc)Vec2_imul,           /* nb_inplace_multiply */
+    0, //(binaryfunc)Vec2_iadd,      /* nb_inplace_add */
+    0, //(binaryfunc)Vec2_isub,      /* nb_inplace_subtract */
+    0, //(binaryfunc)Vec2_imul,      /* nb_inplace_multiply */
 #ifndef IS_PY3K
-    (binaryfunc)Vec2_itruediv,       /* nb_inplace_divide */
+    0, //(binaryfunc)Vec2_itruediv,  /* nb_inplace_divide */
 #endif
     0,                               /* nb_inplace_remainder */
     0,                               /* nb_inplace_power */
@@ -630,8 +648,8 @@ static PyNumberMethods Vec2_as_number = {
     0,                               /* nb_inplace_or */
     (binaryfunc)Vec2_floor_divide,   /* nb_floor_divide */
     (binaryfunc)Vec2_true_divide,    /* nb_true_divide */
-    (binaryfunc)Vec2_ifloordiv,      /* nb_inplace_floor_divide */
-    (binaryfunc)Vec2_itruediv,       /* nb_inplace_true_divide */
+    0, //(binaryfunc)Vec2_ifloordiv, /* nb_inplace_floor_divide */
+    0, //(binaryfunc)Vec2_itruediv,  /* nb_inplace_true_divide */
     0,                               /* nb_index */
 };
 

@@ -452,12 +452,12 @@ static PyMethodDef AABB_methods[] = {
     {"copy", (PyCFunction)AABB_copy, METH_NOARGS,
      "Copy the AABB"
     },
-    {"combine_two", (PyCFunction)AABB_combine_two, METH_VARARGS,
+    /*{"combine_two", (PyCFunction)AABB_combine_two, METH_VARARGS,
      "Combine two AABBs into this one, ignoring the current AABB."
     },
     {"combine", (PyCFunction)AABB_iadd, METH_O,
      "Combine an AABB into this one. (or use +=)"
-    },
+    },*/
     {"contains", (PyCFunction)AABB_contains, METH_O,
      "Does this aabb contain the provided AABB?"
     },
@@ -534,7 +534,7 @@ static PyNumberMethods AABB_as_number = {
     0,                          /*nb_oct*/
     0,                          /*nb_hex*/
 #endif
-    (binaryfunc)AABB_iadd,      /* nb_inplace_add */
+    0,                          /* nb_inplace_add */
     0,                          /* nb_inplace_subtract */
     0,                          /* nb_inplace_multiply */
 #ifndef IS_PY3K

@@ -34,7 +34,7 @@ class OneSidedPlatform (Framework):
 
         self.world.contact_manager.pre_solve = self.pre_solve
         # The ground
-        ground = self.world.create_static_body(shapes=b2.Edge((20, 0),(20, 0)))
+        ground = self.world.create_static_body(shapes=b2.Edge((-20, 0),(20, 0)))
 
         # The platform
         half_height=0.5

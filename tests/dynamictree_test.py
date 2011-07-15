@@ -59,7 +59,7 @@ class random_test(unittest.TestCase):
         d = Vec2(rand_float(-.5, .5), rand_float(-.5, .5)) 
         aabb.lower_bound += d
         aabb.upper_bound += d
-
+        
         c0 = 0.5 * (aabb.lower_bound + aabb.upper_bound)
         min_ = (-self.world_extent, 0.0)
         max_ = (self.world_extent, 2.0 * self.world_extent)

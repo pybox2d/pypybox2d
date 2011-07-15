@@ -108,13 +108,13 @@ class Car (Framework):
                 friction=0.6,
                 )
             y1=y2
-            x+=dx
+            x += dx
        
         x_offsets=[ 0,80, 40, 20, 40]
         x_lengths=[40,40, 10, 40,  0]
         y2s      =[ 0, 0,  5,  0, 20]
         for x_offset, x_length, y2 in zip(x_offsets, x_lengths, y2s):
-            x+=x_offset
+            x += x_offset
             ground.create_edge_fixture(
                 (x, 0), (x+x_length, y2),
                 density=0,

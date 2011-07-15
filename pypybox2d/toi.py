@@ -70,7 +70,7 @@ class SeparationFunction(object):
             point_a = xf_a * local_point_a
             point_b = xf_b * local_point_b
             self.axis = point_b - point_a
-            s = self.axis.normalize()
+            s = self.axis.normalized
             return s
 
         index_a1, index_b1 = cache.indices[1]
@@ -83,8 +83,7 @@ class SeparationFunction(object):
             local_point_b1 = proxy_b._vertices[index_b0]
             local_point_b2 = proxy_b._vertices[index_b1]
 
-            self.axis = (local_point_b2 - local_point_b1).cross(1.0)
-            self.axis.normalize()
+            self.axis = (local_point_b2 - local_point_b1).cross(1.0).normalized
             normal = xf_b._rotation * self.axis
 
             self.local_point = 0.5 * (local_point_b1 + local_point_b2)
@@ -107,8 +106,7 @@ class SeparationFunction(object):
             local_point_a1 = self.proxy_a._vertices[index_a0]
             local_point_a2 = self.proxy_a._vertices[index_a1]
             
-            self.axis = (local_point_a2 - local_point_a1).cross(1.0)
-            self.axis.normalize()
+            self.axis = (local_point_a2 - local_point_a1).cross(1.0).normalized
             normal = xf_a._rotation * self.axis
 
             self.local_point = 0.5 * (local_point_a1 + local_point_a2)

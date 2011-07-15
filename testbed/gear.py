@@ -41,16 +41,19 @@ class Gear (Framework):
         body1 = self.world.create_static_body(
                     position=(10.0, 9.0),
                     shapes=circle1,
+                    user_data="static body1",
                 )
 
         body2 = self.world.create_dynamic_body(
                     position=(10.0, 8.0),
                     fixtures=b2.Fixture(box, density=5.0),
+                    user_data="body2",
                 )
         
         body3 = self.world.create_dynamic_body(
                     position=(10.0, 6.0),
                     fixtures=b2.Fixture(circle2, density=5.0),
+                    user_data="body3",
                 )
         
         joint1 = self.world.create_revolute_joint(
@@ -70,6 +73,7 @@ class Gear (Framework):
         body1 = self.world.create_dynamic_body(
                     position = (-3.0, 12.0),
                     fixtures = b2.Fixture(circle1, density=5.0),
+                    user_data="dynamic body1",
                 )
         
         joint1 = self.world.create_revolute_joint(
@@ -79,6 +83,7 @@ class Gear (Framework):
         body2 = self.world.create_dynamic_body(
                     position = (0.0, 12.0),
                     fixtures = b2.Fixture(circle2, density=5.0),
+                    user_data="body2-2",
                 )
 
         joint2 = self.world.create_revolute_joint(
@@ -88,6 +93,7 @@ class Gear (Framework):
         body3 = self.world.create_dynamic_body(
                     position = (2.5, 12.0),
                     fixtures = b2.Fixture(box, density=5.0),
+                    user_data="body3-3",
                 )
        
         joint3 = self.world.create_prismatic_joint(

@@ -26,6 +26,7 @@ __date__ = "$Date$"
 # $Source$
 
 import math
+import operator
 from copy import copy
 from .common import (PI, NUMBER_TYPES, Vec2, AABB, Transform, 
                      min_vector, max_vector, property)
@@ -166,8 +167,7 @@ class Circle(Shape):
         if 0.0 <= a and a <= max_fraction * rr:
             a /= rr
             fraction = a
-            normal = s + a * r
-            normal.normalize()
+            normal = (s + a * r).normalized
             return True, normal, fraction
         return False, None, 0.0
 
@@ -369,14 +369,9 @@ class Polygon(Shape):
 
         # s is the reference point for forming triangles.
         # Its location doesn't change the result (except for rounding error).
-        s=Vec2()
 
         # This code would put the reference point inside the polygon.
-        for vertex in self.vertices:
-            s += vertex
-
-        s *= 1.0 / len(self.vertices)
-
+        s = reduce(operator.add, self.vertices) / len(self.vertices)
         inv3 = 1.0 / 3.0
         
         count=len(self.vertices)
@@ -395,11 +390,9 @@ class Polygon(Shape):
             # Area weighted centroid
             center += triangle_area * inv3 * (e1 + e2)
 
-            ex1 = e1.x
-            ey1 = e1.y
+            ex1, ey1 = e1
 
-            ex2 = e2.x
-            ey2 = e2.y
+            ex2, ey2 = e2
 
             intx2 = ex1*ex1 + ex2*ex1 + ex2*ex2
             inty2 = ey1*ey1 + ey2*ey1 + ey2*ey2
@@ -412,7 +405,7 @@ class Polygon(Shape):
         # Center of mass
         assert(area > EPSILON)
 
-        center *= 1.0 / area
+        center /= area
         md.center = center + s
 
         # Inertia tensor relative to the local origin (point s).
@@ -455,8 +448,7 @@ class Polygon(Shape):
             edge = vertices[(i + 1) % count] - vertices[i]
             if edge.length_squared <= EPSILON_SQR:
                 raise ValueError('Edges are too short')
-            normal=edge.cross(1.0)
-            normal.normalize()
+            normal=edge.cross(1.0).normalized
             normals.append(normal)
 
         if Polygon.CHECK_VERTICES:
@@ -591,8 +583,7 @@ class Edge(Shape):
         v1 = self._vertex1
         v2 = self._vertex2
         e = v2 - v1
-        normal = Vec2(e.y, -e.x)
-        normal.normalize()
+        normal = Vec2(e.y, -e.x).normalized
 
         # q = p1 + t * d
         # dot(normal, q - v1) = 0

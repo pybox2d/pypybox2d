@@ -292,7 +292,7 @@ class Fixture(object):
             self._shape.compute_aabb(xf1, proxy.child_index, aabb1)
             self._shape.compute_aabb(xf2, proxy.child_index, aabb2)
 
-            proxy.aabb.combine_two(aabb1, aabb2)
+            proxy.aabb = aabb1 + aabb2
             displacement = xf2._position - xf1._position
 
             broadphase.move_proxy(proxy.proxy_ref, proxy.aabb, displacement)

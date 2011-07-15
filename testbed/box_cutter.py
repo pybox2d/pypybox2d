@@ -88,15 +88,15 @@ def _polygon_split(fixture, p1, p2, split_size):
             offset=verts[added-1]-verts[added]
         else:
             offset=verts[-1]-verts[0]
-        offset.normalize()
-        verts[added]+=split_size*offset
+        offset = offset.normalized
+        verts[added] += split_size*offset
 
         if added < len(verts)-2:
             offset=verts[added+2]-verts[added+1]
         else:
             offset=verts[0]-verts[len(verts)-1]
-        offset.normalize()
-        verts[added+1]+=split_size*offset
+        offset = offset.normalized
+        verts[added+1] += split_size*offset
 
     # Ensure the new shapes aren't too small
     for verts in new_vertices:

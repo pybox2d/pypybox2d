@@ -57,12 +57,12 @@ def collide_circles(manifold, circle_a, xf_a, circle_b, xf_b):
         return
 
     manifold.type = Manifold.CIRCLES
-    manifold.local_point.set(*circle_a.position)
-    manifold.local_normal.zero()
+    manifold.local_point = Vec2(*circle_a.position)
+    manifold.local_normal = Vec2()
     manifold.point_count = 1
 
     point=manifold.points[0]
-    point.local_point.set(*circle_b.position)
+    point.local_point = Vec2(*circle_b.position)
     point.set_id(0,0,0,0)
 
 def collide_polygon_circle(manifold, polygon_a, xf_a, circle_b, xf_b):
@@ -102,10 +102,10 @@ def collide_polygon_circle(manifold, polygon_a, xf_a, circle_b, xf_b):
     if separation < EPSILON:
         manifold.point_count = 1
         manifold.type = Manifold.FACE_A
-        manifold.local_normal.set(*normals[normal_index])
+        manifold.local_normal = Vec2(*normals[normal_index])
         manifold.local_point = 0.5 * (v1 + v2)
         point=manifold.points[0]
-        point.local_point.set(*circle_b.position)
+        point.local_point = Vec2(*circle_b.position)
         point.set_id(0, 0, 0, 0)
         return
 
@@ -117,29 +117,27 @@ def collide_polygon_circle(manifold, polygon_a, xf_a, circle_b, xf_b):
         if distance_squared(c_local, v1) > radius**2:
             return
 
-        manifold.local_normal = c_local - v1
-        manifold.local_normal.normalize()
-        manifold.local_point.set(*v1)
+        manifold.local_normal = (c_local - v1).normalized
+        manifold.local_point = Vec2(*v1)
     elif u2 < 0.0:
         if distance_squared(c_local, v2) > radius**2:
             return
 
-        manifold.local_normal = c_local - v2
-        manifold.local_normal.normalize()
-        manifold.local_point.set(*v2)
+        manifold.local_normal = (c_local - v2).normalized
+        manifold.local_point = Vec2(*v2)
     else:
         face_center = 0.5 * (v1 + v2)
         separation = (c_local - face_center).dot(normals[i1])
         if separation > radius:
             return
 
-        manifold.local_normal.set(*normals[i1])
+        manifold.local_normal = Vec2(*normals[i1])
         manifold.local_point = face_center
 
     manifold.point_count = 1
     manifold.type = Manifold.FACE_A
     point=manifold.points[0]
-    point.local_point.set(*circle_b.position)
+    point.local_point = Vec2(*circle_b.position)
     point.set_id(0, 0, 0, 0)
 
 # -- polygons --
@@ -194,9 +192,8 @@ def collide_polygons(manifold, poly_a, xf_a, poly_b, xf_b):
     v11 = vertices1[iv1]
     v12 = vertices1[iv2]
 
-    localtangent = v12 - v11
-    localtangent.normalize()
-    
+    localtangent = (v12 - v11).normalized
+
     local_normal = localtangent.cross(1.0)
     planepoint = 0.5 * (v11 + v12)
 
@@ -292,7 +289,7 @@ def collide_edge_circle(manifold, edge_a, xf_a, circle_b, xf_b):
         type_a = ManifoldPoint.VERTEX
         manifold.point_count = 1
         manifold.type = Manifold.CIRCLES
-        manifold.local_normal.zero()
+        manifold.local_normal = Vec2()
         manifold.local_point = P
         mp = manifold.points[0]
         mp.set_id(index_a, index_b, type_a, type_b) 
@@ -322,7 +319,7 @@ def collide_edge_circle(manifold, edge_a, xf_a, circle_b, xf_b):
         type_a =ManifoldPoint.VERTEX
         manifold.point_count = 1
         manifold.type = Manifold.CIRCLES
-        manifold.local_normal.zero()
+        manifold.local_normal = Vec2()
         manifold.local_point = P
 
         mp = manifold.points[0]
@@ -342,7 +339,7 @@ def collide_edge_circle(manifold, edge_a, xf_a, circle_b, xf_b):
     n = Vec2(-e.y, e.x)
     if n.dot(Q - A) < 0.0:
         n = Vec2(-n.x, -n.y)
-    n.normalize()
+    n = n.normalized
 
     index_a = 0
     type_a = ManifoldPoint.FACE
@@ -421,8 +418,7 @@ class EPCollider(object):
         e = self._edge_a.v2 - self._edge_a.v1
 
         # Normal points outwards in CCW order.
-        self._edge_a.normal = Vec2(e.y, -e.x)
-        self._edge_a.normal.normalize()
+        self._edge_a.normal = Vec2(e.y, -e.x).normalized
 
         # Proxy for edge
         self._proxy_a = EPProxy()
@@ -490,8 +486,7 @@ class EPCollider(object):
         v11 = vertices1[iv1]
         v12 = vertices1[iv2]
 
-        tangent = v12 - v11
-        tangent.normalize()
+        tangent = (v12 - v11).normalized
         
         normal = tangent.cross(1.0)
         plane_point = 0.5 * (v11 + v12)
@@ -555,10 +550,8 @@ class EPCollider(object):
         if self._edge_a.v0 is not None:
             e0 = v1 - v0
             e1 = v2 - v1
-            n0 = Vec2(e0.y, -e0.x)
-            n1 = Vec2(e1.y, -e1.x)
-            n0.normalize()
-            n1.normalize()
+            n0 = Vec2(e0.y, -e0.x).normalized
+            n1 = Vec2(e1.y, -e1.x).normalized
 
             convex = n0.cross(n1) >= 0.0
             front0 = n0.dot(center_b - v0) >= 0.0
@@ -579,16 +572,14 @@ class EPCollider(object):
                     self._limit11 = -n0
                     self._limit12 = -n1
         else:
-            self._limit11.zero()
-            self._limit12.zero()
+            self._limit11 = Vec2()
+            self._limit12 = Vec2()
 
         if self._edge_a.v3 is not None:
             e1 = v2 - v1
             e2 = v3 - v2
-            n1 = Vec2(e1.y, -e1.x)
-            n2 = Vec2(e2.y, -e2.x)
-            n1.normalize()
-            n2.normalize()
+            n1 = Vec2(e1.y, -e1.x).normalized
+            n2 = Vec2(e2.y, -e2.x).normalized
 
             convex = n1.cross(n2) >= 0.0
             front1 = n1.dot(center_b - v1) >= 0.0
@@ -609,8 +600,8 @@ class EPCollider(object):
                     self._limit21 = -n1
                     self._limit22 = -n2
         else:
-            self._limit21.zero()
-            self._limit22.zero()
+            self._limit21 = Vec2()
+            self._limit22 = Vec2()
 
     def compute_edge_separation(self):
         # Edge_a separation

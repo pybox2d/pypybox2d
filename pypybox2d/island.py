@@ -88,14 +88,17 @@ class Island(object):
                 # v2 = exp(-c * dt) * v1
                 # Taylor expansion:
                 # v2 = (1.0 - c * dt) * v1
-                body._linear_velocity *= clamp(1.0 - dt * body._linear_damping, 0.0, 1.0)
-                body._angular_velocity *= clamp(1.0 - dt * body._angular_damping, 0.0, 1.0)
+                v *= clamp(1.0 - dt * body._linear_damping, 0.0, 1.0)
+                w *= clamp(1.0 - dt * body._angular_damping, 0.0, 1.0)
 
             positions.append((c, a))
             velocities.append((v, w))
                 
         # Initialize velocity constraints.
         contact_solver=ContactSolver(step, self.contacts, positions, velocities)
+
+        # The same position and velocity lists are stored in the ContactSolver,
+        # so subsequent calls to solve_* do not require them as parameters.
         contact_solver.initialize_velocity_constraints()
 
         if step.warm_starting:
@@ -113,13 +116,8 @@ class Island(object):
         # Post-solve (store impulses for warm starting).
         contact_solver.store_impulses()
 
-        body_count = len(self.bodies)
-
         # Integrate positions.
-        for i in range(body_count):
-            c, a = positions[i]
-            v, w = velocities[i]
-
+        for i, ((c, a), (v, w)) in enumerate(zip(positions, velocities)):
             # Check for large velocities.
             translation = dt * v
             if translation.dot(translation) > MAX_TRANSLATION_SQR:
@@ -128,6 +126,7 @@ class Island(object):
 
             rotation = dt * w
             if rotation**2 > MAX_ROTATION_SQR:
+                #print(w, self.bodies[i].user_data) # TODO find what's causing this with the gear joint
                 ratio = MAX_ROTATION / abs(rotation)
                 w *= ratio
 
@@ -213,10 +212,7 @@ class Island(object):
 
         dt = sub_step.dt
         # Integrate positions.
-        for i, (body, pos, vel) in enumerate(zip(self.bodies, positions, velocities)):
-            c, a = pos
-            v, w = vel
-
+        for i, (body, (c, a), (v, w)) in enumerate(zip(self.bodies, positions, velocities)):
             # Check for large velocities.
             translation = dt * v
             if translation.length_squared > MAX_TRANSLATION_SQR:
@@ -235,6 +231,7 @@ class Island(object):
             # Sync bodies
             positions[i] = (c, a)
             velocities[i] = (v, w)
+
             body._sweep.c = Vec2(*c)
             body._sweep.a = a
             body._linear_velocity = Vec2(*v)

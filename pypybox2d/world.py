@@ -365,8 +365,8 @@ class World(object):
         """
 
         for body in self.bodies:
-            body._force.zero()
-            body._torque=0.0
+            body._force = Vec2()
+            body._torque = 0.0
 
     def query_aabb(self, aabb, callback=None):
         """

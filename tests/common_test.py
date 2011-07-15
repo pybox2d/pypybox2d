@@ -81,24 +81,24 @@ class common_test(unittest.TestCase):
         c=Vec2(*a)
         assert(b.dot(b) == b*b)
         assert(b.dot(b) == (2.5**2 + 3.1**2))
-        b+=Vec2(1,2)
+        b=b+Vec2(1,2)
         assert(b == (3.5, 5.1))
-        b+=(1,1)
+        b=b+(1,1)
         assert(b == (4.5, 6.1))
-        b*=2
+        b=b*2
         assert(b == (9, 12.2))
         a=Vec2(-1, -1)
         assert(abs(a) == (1, 1))
         assert((b*2)/2 == b)
         #print(b, (b*2), 0.5 * (b*2))
         assert(0.5 * (b*2) == b)
-        b/=2
+        b=b/2
         assert(b == (4.5, 6.1))
 
         a=Vec2(3, 3)
         assert(a == copy(a))
         assert(copy(a) == a == a.copy())
-        a//=2
+        a=a//2
         #print(a)
         assert(a == (1, 1))
         assert(a[0] == 1 and a[1] == 1)
@@ -112,15 +112,7 @@ class common_test(unittest.TestCase):
         assert(scalar_cross(1, b) == (-1.0 * 2.0, 1.0 * 3.0))
         assert(scalar_cross(1.0, b) == (-1.0 * 2.0, 1.0 * 3.0))
 
-        i = 5
-        a.set(i, i)
-        a.zero()
-        #print(a)
-        #print(a.normalize())
-        a.normalize()
-        a.set(3, 4)
-        #print(a.normalize())
-        a.normalize()
+        a = a.normalized
         assert(copy(a) == a == a.copy())
 
     def _test_mat22(self, Mat22):
@@ -155,16 +147,16 @@ class common_test(unittest.TestCase):
         assert(a[0] == (1, 2))
         assert(a[1] == (2, 3))
 
-        a[0] += (-1, -2)
-        a[1] += (-2, -3)
+        a[0] = a[0] + (-1, -2)
+        a[1] = a[1] + (-2, -3)
         assert(a[0] == (0, 0))
         assert(a[1] == (0, 0))
 
-        a += ((1, 2), (3, 4))
+        a = a + ((1, 2), (3, 4))
         #print(a[0])
         assert(a[0] == (1, 2))
         assert(a[1] == (3, 4))
-        a -= ((1, 2), (3, 4))
+        a = a - ((1, 2), (3, 4))
         assert(a == ((0, 0), (0, 0)))
         assert(a != ((1, 0), (0, 1)))
 
@@ -188,15 +180,10 @@ class common_test(unittest.TestCase):
         a._col2.y = 0.0
         assert(a == ((0,0), (0,0)))
 
-        a.set((1, 2), (3, 4))
+        a.col1 = (1, 2)
+        a.col2 = (3, 4)
         assert(a == ((1, 2), (3, 4)))
-        
         assert(copy(a) == a == a.copy())
-        a.set(a)
-        assert(a == ((1, 2), (3, 4)))
-
-        a.col1 += (0, 0)
-        a.col2 += (0, 0)
 
     def _test_transform(self, Transform):
         pypybox2d.common.Transform = Transform
@@ -235,8 +222,6 @@ class common_test(unittest.TestCase):
         assert(c != b)
         assert(c == copy(c))  # transform
         assert(c != copy(b))  # transform
-        
-        b.lower_bound += (0, 0)
 
     def test_Vec2(self):
         assert(Vec2(0, 0) == PyVec2(0, 0))
