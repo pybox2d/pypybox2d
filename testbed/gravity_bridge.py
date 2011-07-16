@@ -30,36 +30,38 @@ from framework import (Framework, main)
 from bridge import create_bridge
 import pypybox2d as b2
 
-class Buoyancy(Framework):
+class Gravity(Framework):
     """
-    A test of the Buoyancy controller
+    A test of the gravity controller
     """
-    name = "Buoyancy"
+    name = "Gravity controller"
     description=""
     def __init__(self):
         Framework.__init__(self)
         
         world = self.world
 
+        # Turn off normal gravity
+        world.gravity = (0, 0)
+
         ground = world.create_static_body(shapes=b2.Edge((-20, 0),( 20, 0))) 
 
-        controller = world.create_buoyancy_controller(
-                                        offset=15, normal=(0, 1), density=2, 
-                                        linear_drag=2, angular_drag=1)
+        controller = world.create_gravity_controller(G=0.8, inv_sqr=True)
        
         # Create a few spheres to bob around
-        for i in range(7):
+        for i in range(1,4):
             body = self.world.create_dynamic_body(
-                    position=(-10+4.0*i, 20), 
-                    fixtures=b2.Fixture(shape=b2.Circle(radius=1.0), 
-                                density=1.0)
+                    position=(0.25 * i, 2.0 + 7.5 * i),
+                    fixtures=b2.Fixture(shape=b2.Circle(radius=0.25 * i), 
+                                density=1.0),
+                    bullet=True,
                     )
 
             controller.add_body(body)
 
         # Create a bridge, and add it to the controller
         num_planks = 30
-        plank_bodies = create_bridge(self.world, ground, (1.0, 0.25), (-14.5, 5), num_planks, 0.2, 1)
+        plank_bodies = create_bridge(self.world, ground, (1.0, 0.25), (-14.5, 5), num_planks, 0.2, 10)
         for body in plank_bodies:
             controller.add_body(body)
 
@@ -67,7 +69,7 @@ class Buoyancy(Framework):
         body = self.world.create_dynamic_body(
                 position=(-10.0, 0), 
                 fixtures=b2.Fixture(shape=b2.Circle(radius=1.0), 
-                            density=1.0)
+                            density=10.0)
                 )
 
         controller.add_body(body)
@@ -76,22 +78,12 @@ class Buoyancy(Framework):
         for i in range(5):
             body = self.world.create_dynamic_body(
                     position=(-10+3.0*i, 20), 
-                    fixtures=b2.Fixture(
-                                shape=b2.Polygon(
-                                    vertices=[(-0.5,0),(0,-0.5),(0.5, 0.0)]),
+                    fixtures=b2.Fixture(shape=b2.Polygon(vertices=[(-0.5,0),(0,-0.5),(0.5, 0.0)]),
                                 density=1.0)
                     )
 
             controller.add_body(body)
 
-        # And (really) finally this time, just something so we can be sure 
-        # edges work, too.
-        edge = world.create_dynamic_body(
-                    fixtures=b2.Fixture(shape=b2.Edge((5, 0),(5, 3)),
-                                density=1.0)
-                    )
-        controller.add_body(edge)
-
 if __name__=="__main__":
-    main(Buoyancy)
+    main(Gravity)
 

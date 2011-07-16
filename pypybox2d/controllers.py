@@ -18,8 +18,10 @@
 # misrepresented as being the original software.
 # 3. This notice may not be removed or altered from any source distribution.
 
+import math
 from .common import (Vec2, property)
 from .settings import (EPSILON, )
+
 class Controller(object):
     """
     Base class for controllers.
@@ -32,6 +34,16 @@ class Controller(object):
 
         for body in bodies:
             self.add_body(body)
+
+    @property
+    def bodies(self):
+        """The bodies affected by this controller"""
+        return list(self._bodies)
+
+    @property
+    def world(self):
+        """The world this controller acts in"""
+        return self._world
 
     def step(self, timestep):
         """Controllers override this to implement per-step functionality."""
@@ -85,17 +97,14 @@ class BuoyancyController(Controller):
         """
         Controller.__init__(self, world, bodies)
 
-        self._normal = Vec2(*normal)
-        self._offset = float(offset)
-        self._density = float(density)
-        self._velocity = Vec2(*velocity)
-        self._linear_drag = float(linear_drag)
-        self._angular_drag = float(angular_drag)
-        self._use_density = bool(use_density)
-        if gravity is not None:
-            self._gravity = Vec2(*gravity)
-        else:
-            self._gravity = None
+        self.normal = normal
+        self.offset = offset
+        self.density = density
+        self.velocity = velocity
+        self.linear_drag = linear_drag
+        self.angular_drag = angular_drag
+        self.use_density = use_density
+        self.gravity = gravity
 
     @property
     def normal(self):
@@ -217,3 +226,55 @@ class BuoyancyController(Controller):
                 body.apply_torque(-body.inertia / body.mass * area * 
                                   body._angular_velocity * self._angular_drag)
 
+
+
+class GravityController(Controller):
+    """Applies simplified gravity between every pair of bodies"""
+    def __init__(self, world, bodies=[], 
+                 G=1.0, inv_sqr=True):
+        """
+        G - the strength of the gravitation force
+        inv_sqr - If True, gravity is proportional to 1/r^2, otherwise 1/r
+        """
+        Controller.__init__(self, world, bodies)
+
+        self.G = G
+        self.inv_sqr = inv_sqr
+
+    @property
+    def G(self):
+        """The strength of the gravitation force"""
+        return self._G
+    @G.setter
+    def G(self, G):
+        self._G = float(G)
+   
+    @property
+    def inv_sqr(self):
+        """inv_sqr - If True, gravity is proportional to 1/r^2, otherwise 1/r"""
+        return self._inv_sqr
+    @inv_sqr.setter
+    def inv_sqr(self, inv_sqr):
+        self._inv_sqr = bool(inv_sqr)
+   
+    def step(self, timestep):
+        def bodies():
+            for body1 in self._bodies:
+                for body2 in self._bodies:
+                    if body1 != body2:
+                        yield body1, body2
+       
+        masses = dict((body, body.mass) for body in self._bodies)
+        G = self._G
+        inv_sqr = self._inv_sqr
+
+        for body1, body2 in bodies():
+            d = body2.world_center - body1.world_center
+            r2 = d.length_squared
+            f = G / r2 * masses[body1] * masses[body2] * d
+            if inv_sqr:
+                f /= math.sqrt(r2)
+
+            body1.apply_force(f, body1.world_center)
+            body2.apply_force(-f, body2.world_center)
+            

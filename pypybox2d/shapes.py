@@ -747,6 +747,35 @@ class Edge(Shape):
         else:
             return None
 
+    def compute_submerged_area(self, normal, offset, xf, density):
+        # Note that v0 is independent of any details of the specific edge
+        # We are relying on v0 being consistent between multiple edges of 
+        # the same body
+        v0 = offset * normal
+        v1 = xf * self._vertex1
+        v2 = xf * self._vertex2
+
+        d1 = normal.dot(v1) - offset
+        d2 = normal.dot(v2) - offset
+
+        if d1 > 0.0:
+            if d2 > 0.0:
+                return 0.0, v1
+            else:
+                v1 = -d2 / (d1 - d2) * v1 + d1 / (d1 - d2) * v2
+        else:
+            if d2 > 0.0:
+                v2 = -d2 / (d1 - d2) * v1 + d1 / (d1 - d2) * v2
+            else:
+                # Nothing
+                pass
+
+        # v0,v1,v2 represents a fully submerged triangle
+        # Area weighted centroid
+        e1 = v1 - v0
+        e2 = v2 - v0
+        return 0.5 * e1.cross(e2), 1.0 / 3.0 * (v0 + v1 + v2)
+        
 class Loop(Shape):
     """
     A loop shape is a free form sequence of line segments that form a circular list.
@@ -833,6 +862,24 @@ class Loop(Shape):
     def vertices(self):
         return [Vec2(*v) for v in self._vertices]
 
+    def compute_submerged_area(self, normal, offset, xf, density):
+        """
+        NOTE: likely wrong
+        """
+        # TODO test
+        child_edges = [self.child_edge(i) for i in range(self.child_count)]
+
+        total_area = 0.0
+        center = Vec2(0, 0)
+        for edge in child_edges:
+            area, s_center = edge.compute_submerged_area(normal, offset, xf, density)
+
+            # Area-weighted centroid
+            center += area * s_center
+            total_area += area
+
+        return total_area, center
+        
 Shapes = [Circle, Polygon, Loop, Edge]
 SHAPE_COUNT = len(Shapes)
 

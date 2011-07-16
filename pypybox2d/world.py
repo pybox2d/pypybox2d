@@ -920,11 +920,17 @@ class World(object):
         self.add_joint(joint)
         return joint
 
+    def create_gravity_controller(self, *args, **kwargs):
+        """
+        For more information, see the controllers.GravityController class.
+        """
+        controller = controllers.GravityController(self, *args, **kwargs)
+        self.add_controller(controller)
+        return controller
+
     def create_buoyancy_controller(self, *args, **kwargs):
         """
-        Create a distance joint between two bodies.
-
-        For more information, see the joints.DistanceJoint class.
+        For more information, see the controllers.BuoyancyController class.
         """
         controller = controllers.BuoyancyController(self, *args, **kwargs)
         self.add_controller(controller)
