@@ -116,7 +116,7 @@ def draw_line(screen, p1, p2, color=(255, 255, 255)):
 
 def draw_point(screen, point, radius=0.1, color=(255, 255, 255)):
     point = to_screen([point])[0]
-    pygame.draw.circle(screen, color, point, radius * PPM)
+    pygame.draw.circle(screen, color, point, int(radius * PPM))
 
 def draw_lines(screen, points, color=(255, 255, 255)):
     vertices = to_screen(points)

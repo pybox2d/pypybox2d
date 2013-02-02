@@ -39,6 +39,7 @@ __version__="$Revision: 331 $"
 package_name = 'pypybox2d'
 major_version = '2.1'
 major_release = False
+build_cext = True # Build/use the C extension for speeding up math
 
 if not major_release:
     try:
@@ -51,6 +52,7 @@ else:
     version = major_version
 
 src_path = '%s/src' % package_name
+
 c_source_files = ["vec2module.c", 
                   "mat22module.c", 
                   "aabbmodule.c", 
@@ -74,6 +76,9 @@ LONG_DESCRIPTION = \
    Box2D homepage: %s
     """ % (package_name, pygame_url, pybox2d_url, box2d_url)
 
+package_dirs = [(package_name, package_name), 
+                ('%s.joints' % package_name, os.path.join(package_name, 'joints'))]
+
 CLASSIFIERS = [
     "Development Status :: 3 - Alpha",
     "Topic :: Software Development :: Libraries",
@@ -90,6 +95,11 @@ CLASSIFIERS = [
     "Programming Language :: Python :: 3.2",
     ]
 
+if build_cext:
+    ext_modules = [Extension("%s._common" % package_name, c_source_files)]
+else:
+    ext_modules = []
+
 setup(name=package_name,
       version=version,
       author=__author__,
@@ -100,7 +110,7 @@ setup(name=package_name,
       url=pybox2d_url,
       test_suite='tests',
       platforms='any',
-      packages=[package_name],
-      package_dir={ package_name : package_name },
-      ext_modules=[Extension("%s._common" % package_name, c_source_files)],
+      packages=[p[0] for p in package_dirs],
+      package_dir=dict(package_dirs),
+      ext_modules=ext_modules,
      )
