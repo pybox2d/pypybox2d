@@ -38,19 +38,10 @@ __version__="$Revision: 331 $"
 
 package_name = 'pypybox2d'
 major_version = '2.1'
-major_release = False
 build_cext = True # Build/use the C extension for speeding up math
 
-if not major_release:
-    try:
-        revision = '-r%s' % __version__.split(' ')[1]
-    except:
-        revision = ''
-
-    version = '%sdev%s' % (major_version, revision)
-else:
-    version = major_version
-
+revision = 'r%s' % __version__.split(' ')[1]
+version = '%s-%s' % (major_version, revision)
 src_path = '%s/src' % package_name
 
 c_source_files = ["vec2module.c", 
@@ -103,7 +94,7 @@ else:
 setup(name=package_name,
       version=version,
       author=__author__,
-      description='2D Physics in Pure Python',
+      description='Pure Python 2D Physics',
       license='zlib',
       long_description=LONG_DESCRIPTION,
       classifiers=CLASSIFIERS,

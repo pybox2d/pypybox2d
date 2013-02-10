@@ -1,0 +1,7 @@
+include LICENSE
+include README
+include setup.py
+include distribute_setup.py
+recursive-include examples *.py
+recursive-include testbed *.py *.png
+recursive-include pypybox2d *.py *.c *.h

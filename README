@@ -1,0 +1,14 @@
+pypybox2d
+---------
+Pure Python physics
+http://pybox2d.blogspot.com/
+
+If you want the truly pure Python version, set build_cext to False in setup.py.
+Otherwise, installation will require a working C compiler.
+
+Installation:
+> python setup.py install
+Alternatively, you can copy the pypybox2d directory into testbed or examples and it should
+also work.
+
+Examples in testbed (requires pygame). 
