@@ -604,7 +604,7 @@ class ContactSolver(object):
 # b = vn_0 - velocity_bias
 #
 # The system is solved using the "Total enumeration method" (s. Murty). The complementary constraint vn_i * x_i
-# implies that we must have in any solution either vn_i = 0 or x_i = 0. So for the 2_d contact problem the cases
+# implies that we must have in any solution either vn_i = 0 or x_i = 0. So for the 2D contact problem the cases
 # vn1 = 0 and vn2 = 0, x1 = 0 and x2 = 0, x1 = 0 and vn2 = 0, x2 = 0 and vn1 = 0 need to be tested. The first valid
 # solution that satisfies the problem is chosen.
 # 

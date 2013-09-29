@@ -117,18 +117,25 @@ class ContactManager(object):
             index_b = proxy_b.child_index
 
             # Does a contact already exist?
+            exists = False
+
             for contact in body_b._contacts:
                 if contact.other_body(body_b) == body_a:
                     fa, fb = contact._fixture_a, contact._fixture_b
                     ia, ib = contact._index_a, contact._index_b
 
-                    if fa==fixture_a and fb==fixture_b and ia==index_a and ib == index_b:
+                    if fa == fixture_a and fb == fixture_b and ia==index_a and ib == index_b:
                         # A contact already exists
-                        continue
+                        exists = True
+                        break
 
-                    if fa==fixture_b and fb==fixture_a and ia==index_b and ib == index_a:
+                    elif fa == fixture_b and fb == fixture_a and ia==index_b and ib == index_a:
                         # A contact already exists
-                        continue
+                        exists = True
+                        break
+
+            if exists:
+                continue
 
             # Does a joint override collision? Is at least one body dynamic?
             if not body_b._should_collide(body_a):

@@ -32,7 +32,8 @@ __date__ = "$Date$"
 import pygame
 from pygame.locals import *
 import sys
-sys.path.extend(['..', '.'])
+sys.path.insert(0, '..')
+sys.path.insert(0, '.')
 
 import pypybox2d as b2
 from pypybox2d.common import *

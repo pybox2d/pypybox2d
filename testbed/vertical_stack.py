@@ -22,6 +22,9 @@ __version__ = "$Revision$"
 __date__ = "$Date$"
 # $Source$
 
+import sys
+sys.path.insert(0, '../pypybox2d')
+
 from framework import *
 
 class VerticalStack (Framework):
