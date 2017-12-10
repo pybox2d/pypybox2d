@@ -63,7 +63,7 @@ class RopeJoint(Joint):
         Joint.__init__(self, body_a, body_b, collide_connected)
 
         self._local_anchor_a = Vec2(*local_anchor_a)
-        self._local_anchor_b = Vec2(*local_anchor_a)
+        self._local_anchor_b = Vec2(*local_anchor_b)
         self._state = INACTIVE_LIMIT
         self._length = 0.0
         self._max_length = max_length
