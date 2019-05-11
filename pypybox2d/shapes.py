@@ -28,6 +28,7 @@ __date__ = "$Date$"
 import math
 import operator
 from copy import copy
+from functools import reduce
 from .common import (PI, NUMBER_TYPES, Vec2, AABB, Transform, 
                      min_vector, max_vector, property)
 from .settings import (EPSILON, EPSILON_SQR, POLYGON_RADIUS)
